@@ -688,7 +688,7 @@ input[type="text"]:focus {
   inset: 0 auto 0 0;
   width: 0%;
   border-radius: inherit;
-  transition: width 0.18s ease-out;
+  transition: width 0.08s linear;
   background: linear-gradient(90deg, transparent, currentColor);
   opacity: 0.85;
 }
@@ -701,7 +701,7 @@ input[type="text"]:focus {
   height: 18px;
   border-radius: 50%;
   transform: translate(-50%, -50%);
-  transition: left 0.18s ease-out;
+  transition: left 0.08s linear;
   box-shadow: 0 0 12px currentColor, 0 0 2px #fff;
   border: 2px solid rgba(255, 255, 255, 0.7);
   background: currentColor;

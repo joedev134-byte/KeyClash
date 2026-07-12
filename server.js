@@ -23,13 +23,16 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*" },
-  pingTimeout: 20000,
-  pingInterval: 10000,
+  pingTimeout: 25000,
+  pingInterval: 8000,
+  // Helpful behind Render / reverse proxies
+  allowEIO3: true,
+  transports: ["websocket", "polling"],
 });
 
 const PORT = process.env.PORT || 3000;
 const MAX_PLAYERS = 10;
-const COUNTDOWN_MS = 3200;
+const COUNTDOWN_MS = 3000;
 const RACE_TIMEOUT_MS = 120000;
 const TIMED_MS = 60000;
 const RECONNECT_GRACE_MS = 60000;
@@ -515,24 +518,30 @@ function startCountdown(room) {
   room.raceDurationMs = raceDurationForMode(room.mode);
   room.status = "countdown";
   room.raceStart = null;
+  room.countdownEndsAt = Date.now() + COUNTDOWN_MS;
   [...room.players.values()].forEach(resetRaceStats);
 
-  io.to(room.code).emit("race:countdown", {
+  const countdownPayload = {
     duration: COUNTDOWN_MS,
+    endsAt: room.countdownEndsAt,
+    serverNow: Date.now(),
     passage: room.passage,
     difficulty: room.difficulty,
     language: room.language,
     mode: room.mode,
     raceDurationMs: room.raceDurationMs,
     snapshot: roomSnapshot(room),
-  });
+  };
+  io.to(room.code).emit("race:countdown", countdownPayload);
   emitRoom(room);
 
   room.countdownTimer = setTimeout(() => {
     room.status = "racing";
     room.raceStart = Date.now();
+    room.countdownEndsAt = null;
     io.to(room.code).emit("race:start", {
       raceStart: room.raceStart,
+      serverNow: Date.now(),
       passage: room.passage,
       difficulty: room.difficulty,
       language: room.language,
@@ -1112,8 +1121,11 @@ io.on("connection", (socket) => {
     player.accuracy = accuracy;
     player.progress = progress;
 
+    // Lightweight realtime update (no full room snapshot — faster on Render)
     io.to(room.code).emit("race:progress", {
       id: player.id,
+      name: player.name,
+      color: player.color,
       progress: player.progress,
       wpm: player.wpm,
       accuracy: player.accuracy,
@@ -1122,6 +1134,7 @@ io.on("connection", (socket) => {
       finished: player.finished,
       eliminated: player.eliminated,
       place: player.place,
+      team: player.team || null,
     });
 
     // Complete passage (classic / bo3 / sudden clean finish / timed early complete)
@@ -1132,11 +1145,13 @@ io.on("connection", (socket) => {
       rankFinishers(room);
       io.to(room.code).emit("player:finished", {
         id: player.id,
+        name: player.name,
         place: player.place,
         wpm: player.wpm,
         accuracy: player.accuracy,
         finishTime: player.finishTime,
       });
+      // Full snapshot only when someone finishes
       emitRoom(room);
       maybeEndRace(room);
     }

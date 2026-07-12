@@ -66,9 +66,12 @@
 
   const socket = io({
     transports: ["websocket", "polling"],
+    upgrade: true,
     reconnection: true,
-    reconnectionAttempts: 12,
-    reconnectionDelay: 800,
+    reconnectionAttempts: 20,
+    reconnectionDelay: 500,
+    reconnectionDelayMax: 3000,
+    timeout: 15000,
   });
 
   const els = {
@@ -209,6 +212,9 @@
     lastKeyBurst: 0,
     history: [],
     historyTimer: null,
+    countdownTimer: null,
+    pendingRoomCode: null,
+    joinInFlight: false,
     confettiShown: false,
     resultsShownForRound: null,
     modeScreen: "home",
@@ -999,6 +1005,7 @@
       const li = document.createElement("li");
       const offline = p.connected === false;
       const dead = !!p.eliminated;
+      li.dataset.id = p.id;
       li.className =
         "player-item" +
         (p.id === state.myId ? " me" : "") +
@@ -1022,11 +1029,13 @@
           ? `<span class="badge team-${p.team === "A" ? "a" : "b"}">T${p.team}</span>`
           : "";
 
+      // Use solid high-contrast name color fallback so names always show
+      const nameColor = p.color || "#e8ecff";
       li.innerHTML = `
-        <span class="player-dot" style="color:${p.color};background:${p.color}"></span>
+        <span class="player-dot" style="color:${nameColor};background:${nameColor}"></span>
         <div class="player-meta">
-          <div class="player-name" style="color:${p.color}">${escapeHtml(p.name)}${p.id === state.myId ? " (you)" : ""}</div>
-          <div class="player-sub">${p.wpm || 0} WPM · ${p.accuracy != null ? p.accuracy : 100}%</div>
+          <div class="player-name" style="color:${nameColor}">${escapeHtml(p.name || "Racer")}${p.id === state.myId ? " (you)" : ""}</div>
+          <div class="player-sub">${p.wpm || 0} WPM · ${p.accuracy != null ? p.accuracy : 100}% · ${p.progress || 0}%</div>
         </div>
         <div class="player-badges">
           ${p.isHost || p.id === state.room.hostId ? '<span class="badge host">HOST</span>' : ""}
@@ -1129,24 +1138,63 @@
     }
   }
 
-  function updateTrackPlayer(update) {
-    if (!state.room) return;
-    const p = state.room.players.find((x) => x.id === update.id);
-    if (p) Object.assign(p, update);
-    const row = els.trackBoard.querySelector(`.track[data-id="${update.id}"]`);
-    if (!row) {
-      renderTracks();
+  function upsertPlayer(player) {
+    if (!state.room || !player || !player.id) return;
+    if (!Array.isArray(state.room.players)) state.room.players = [];
+    const existing = state.room.players.find((x) => x.id === player.id);
+    if (existing) Object.assign(existing, player);
+    else state.room.players.push(player);
+  }
+
+  function updatePlayerListRow(update) {
+    if (!els.playerList || !update || !update.id) return;
+    const li = els.playerList.querySelector(`.player-item[data-id="${update.id}"]`);
+    if (!li) {
+      // Unknown row — full re-render
+      if (state.room) renderPlayers();
       return;
+    }
+    const sub = li.querySelector(".player-sub");
+    if (sub) {
+      sub.textContent = `${update.wpm || 0} WPM · ${update.accuracy != null ? update.accuracy : 100}% · ${update.progress || 0}%`;
+    }
+    const nameEl = li.querySelector(".player-name");
+    if (nameEl && update.name) {
+      const you = update.id === state.myId ? " (you)" : "";
+      nameEl.textContent = update.name + you;
+      if (update.color) nameEl.style.color = update.color;
+    }
+  }
+
+  function updateTrackPlayer(update) {
+    if (!update || !update.id) return;
+    if (state.room) {
+      const p = state.room.players.find((x) => x.id === update.id);
+      if (p) Object.assign(p, update);
+    }
+    if (!els.trackBoard) return;
+    let row = els.trackBoard.querySelector(`.track[data-id="${CSS.escape ? CSS.escape(update.id) : update.id}"]`);
+    // CSS.escape may not like some ids — fallback without escape
+    if (!row) row = els.trackBoard.querySelector(`[data-id="${update.id}"]`);
+    if (!row) {
+      if (state.room) renderTracks();
+      row = els.trackBoard.querySelector(`[data-id="${update.id}"]`);
+      if (!row) return;
     }
     const fill = row.querySelector(".track-fill");
     const racer = row.querySelector(".track-racer");
     const wpm = row.querySelector(".track-wpm");
-    if (fill) fill.style.width = (update.progress || 0) + "%";
-    if (racer) {
-      racer.style.left = (update.progress || 0) + "%";
-      racer.classList.toggle("finished", !!(update.finished || update.eliminated));
+    const prog = update.progress != null ? update.progress : 0;
+    if (fill) {
+      fill.style.width = prog + "%";
+      if (update.color) fill.style.color = update.color;
     }
-    if (wpm) wpm.textContent = update.wpm || 0;
+    if (racer) {
+      racer.style.left = prog + "%";
+      racer.classList.toggle("finished", !!(update.finished || update.eliminated));
+      if (update.color) racer.style.color = update.color;
+    }
+    if (wpm) wpm.textContent = String(update.wpm || 0);
   }
 
   function renderPassageInto(el, text, caret, typedWrong) {
@@ -1268,7 +1316,11 @@
   function emitProgress() {
     if (!state.racing) return;
     const stats = updateLocalStats();
-    socket.emit("race:progress", { correct: stats.correct, errors: stats.errors });
+    // No ack/timeout — fire-and-forget for lowest latency
+    socket.emit("race:progress", {
+      correct: stats.correct,
+      errors: stats.errors,
+    });
   }
 
   function resetStatsDisplay() {
@@ -1484,33 +1536,63 @@
     updateHostHint();
   }
 
-  function runCountdown(duration, numEl, overlayEl, onDone) {
+  function cancelCountdown() {
+    if (state.countdownTimer) {
+      clearInterval(state.countdownTimer);
+      state.countdownTimer = null;
+    }
+  }
+
+  /**
+   * Reliable countdown (setInterval — rAF freezes in background tabs / mobile).
+   * endsAt = server absolute time for sync across clients.
+   */
+  function runCountdown(duration, numEl, overlayEl, onDone, endsAt) {
+    cancelCountdown();
+    if (!numEl || !overlayEl) return;
     overlayEl.hidden = false;
-    const start = Date.now();
     const labels = ["3", "2", "1", "GO"];
+    const total = Math.max(1000, duration || 3000);
+    const end = typeof endsAt === "number" ? endsAt : Date.now() + total;
     let last = -1;
-    function frame() {
-      const t = Date.now() - start;
-      const idx = Math.min(3, Math.floor(t / (duration / 4)));
+
+    const tick = () => {
+      const left = end - Date.now();
+      const elapsed = total - left;
+      let idx = Math.floor((elapsed / total) * 4);
+      if (idx < 0) idx = 0;
+      if (idx > 3) idx = 3;
+
       if (idx !== last) {
         last = idx;
         numEl.textContent = labels[idx];
         numEl.style.animation = "none";
         void numEl.offsetWidth;
-        numEl.style.animation = "";
-        KeyClashFX.SFX.countdown(labels[idx] === "GO" ? "GO" : Number(labels[idx]));
-        if (labels[idx] === "GO") KeyClashFX.screenFlash("rgba(0,245,212,0.15)");
+        numEl.style.animation = "countPop 0.45s cubic-bezier(0.2, 1.4, 0.3, 1)";
+        try {
+          KeyClashFX.SFX.countdown(labels[idx] === "GO" ? "GO" : Number(labels[idx]));
+        } catch (_) {}
+        if (labels[idx] === "GO") {
+          try {
+            KeyClashFX.screenFlash("rgba(0,245,212,0.15)");
+          } catch (_) {}
+        }
       }
-      if (t < duration) requestAnimationFrame(frame);
-      else {
+
+      if (left <= 0) {
+        cancelCountdown();
+        numEl.textContent = "GO";
         overlayEl.hidden = true;
-        if (onDone) onDone();
+        if (typeof onDone === "function") onDone();
       }
-    }
-    frame();
+    };
+
+    tick();
+    state.countdownTimer = setInterval(tick, 50);
   }
 
   function beginRace(raceStart, passage, raceDurationMs) {
+    cancelCountdown();
     state.racing = true;
     state.raceStart = raceStart || Date.now();
     state.raceDurationMs = raceDurationMs || state.raceDurationMs || 120000;
@@ -1523,6 +1605,7 @@
     state.resultsShownForRound = null;
     els.resultsOverlay.hidden = true;
     els.countdownOverlay.hidden = true;
+    if (els.countdownNum) els.countdownNum.textContent = "GO";
     els.typeInput.disabled = false;
     els.typeInput.value = "";
     els.typeInput.placeholder = "Type the passage above…";
@@ -1556,7 +1639,9 @@
     });
 
     if (state.progressTimer) clearInterval(state.progressTimer);
-    state.progressTimer = setInterval(emitProgress, 200);
+    // Faster live sync for other players' tracks
+    state.progressTimer = setInterval(emitProgress, 80);
+    emitProgress();
   }
 
   function endLocalRace() {
@@ -1956,22 +2041,7 @@
 
   els.btnJoin.addEventListener("click", () => {
     showHomeError("");
-    const code = (els.code.value || "").trim().toUpperCase();
-    if (!code) {
-      showHomeError("Enter the 5-character room code from your host.");
-      return;
-    }
-    els.btnJoin.disabled = true;
-    socket.emit("room:join", { code, name: getName() }, (res) => {
-      els.btnJoin.disabled = false;
-      if (!res?.ok) {
-        showHomeError(res?.error || "Could not join room.");
-        toast(res?.error || "Join failed", true);
-        return;
-      }
-      enterGame(res.room, res.session);
-      toast("Joined · " + modeLabel(res.room.mode));
-    });
+    joinRoom((els.code.value || "").trim().toUpperCase());
   });
 
   els.btnPractice.addEventListener("click", () => {
@@ -2024,21 +2094,120 @@
   });
 
   function getGameUrl() {
-    // Public URL of this KeyClash instance (localhost, LAN, or deployed domain)
     return window.location.origin + "/";
   }
 
+  /** Deep link that opens straight into this room */
+  function roomInviteUrl(code) {
+    const room = (code || (state.room && state.room.code) || "").toUpperCase();
+    if (!room || room === "-----") return getGameUrl();
+    return window.location.origin + "/?room=" + encodeURIComponent(room);
+  }
+
   function buildInviteText(code) {
-    const url = getGameUrl();
     const room = code || (state.room && state.room.code) || "-----";
+    const url = roomInviteUrl(room);
     return (
       "Join my KeyClash room!\n" +
       "Link: " +
       url +
-      "\nRoom code: " +
+      "\n(Room: " +
       room +
-      "\n\nOpen the link → enter your name → Join with the code."
+      ")\n\nTap the link — it opens the lobby. Enter your name if asked."
     );
+  }
+
+  function getRoomFromUrl() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const raw = params.get("room") || params.get("code") || "";
+      return String(raw).trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+    } catch {
+      return "";
+    }
+  }
+
+  function clearRoomQueryFromUrl() {
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("room") || url.searchParams.has("code")) {
+        url.searchParams.delete("room");
+        url.searchParams.delete("code");
+        window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+      }
+    } catch (_) {}
+  }
+
+  function joinRoom(code, opts) {
+    const options = opts || {};
+    const roomCode = String(code || "")
+      .trim()
+      .toUpperCase();
+    if (!roomCode) {
+      showHomeError("Enter the 5-character room code from your host.");
+      return;
+    }
+    if (state.joinInFlight) return;
+    state.joinInFlight = true;
+    if (els.btnJoin) els.btnJoin.disabled = true;
+    if (!options.silent) toast("Joining " + roomCode + "…");
+
+    const attempt = () => {
+      if (!socket.connected) {
+        socket.connect();
+        setTimeout(attempt, 250);
+        return;
+      }
+      socket.timeout(10000).emit(
+        "room:join",
+        { code: roomCode, name: getName() },
+        (err, response) => {
+          state.joinInFlight = false;
+          if (els.btnJoin) els.btnJoin.disabled = false;
+
+          if (err) {
+            showHomeError(
+              "Join timed out. Free server may be waking up — wait 30s and try again."
+            );
+            toast("Join timed out — try again", true);
+            return;
+          }
+
+          if (!response || !response.ok) {
+            showHomeError((response && response.error) || "Could not join room.");
+            toast((response && response.error) || "Join failed", true);
+            return;
+          }
+          clearRoomQueryFromUrl();
+          enterGame(response.room, response.session);
+          toast("Joined lobby · " + response.room.code);
+        }
+      );
+    };
+    attempt();
+  }
+
+  function tryAutoJoinFromUrl() {
+    const room = getRoomFromUrl();
+    if (!room) return;
+    state.pendingRoomCode = room;
+    if (els.code) els.code.value = room;
+    // Prefill / prompt name then join
+    if (!(els.name.value || "").trim()) {
+      showHomeError("Enter your name, then you'll join room " + room + " automatically.");
+      if (els.name) els.name.focus();
+      // Join when they finish typing name (Enter or after blur with value)
+      const onceJoin = () => {
+        if ((els.name.value || "").trim() && state.pendingRoomCode) {
+          joinRoom(state.pendingRoomCode, { silent: true });
+          state.pendingRoomCode = null;
+        }
+      };
+      els.name.addEventListener("change", onceJoin, { once: true });
+      return;
+    }
+    joinRoom(room, { silent: false });
+    state.pendingRoomCode = null;
   }
 
   function isLocalHost() {
@@ -2083,13 +2252,14 @@
   if (els.btnShare) {
     els.btnShare.addEventListener("click", async () => {
       if (!state.room) return;
+      const inviteUrl = roomInviteUrl(state.room.code);
       const text = buildInviteText(state.room.code);
       if (navigator.share) {
         try {
           await navigator.share({
             title: "KeyClash",
             text: text,
-            url: getGameUrl(),
+            url: inviteUrl,
           });
           toast("Invite shared");
           return;
@@ -2097,9 +2267,10 @@
           /* fall through to clipboard */
         }
       }
-      await copyText(text, "Invite link + code copied — paste sa chat/Discord");
+      // Prefer copying the deep link (one-tap join)
+      await copyText(inviteUrl + "\n" + text, "Invite link copied — friends open it to join your lobby");
       if (isLocalHost()) {
-        toast("Note: localhost link works on your PC only. Deploy for internet play.", true);
+        toast("Note: localhost link works on your PC only.", true);
       }
     });
   }
@@ -2196,30 +2367,84 @@
   socket.on("connect", () => {
     state.myId = socket.id;
     const s = loadSession();
-    if (s?.roomCode && s?.token && !state.room) tryReconnect(false);
+    if (s?.roomCode && s?.token && !state.room) {
+      tryReconnect(false);
+    } else if (!state.room) {
+      tryAutoJoinFromUrl();
+    }
   });
 
   socket.on("room:update", (room) => {
     const wasRacing = state.racing;
+    const wasCountdown = state.room && state.room.status === "countdown";
     const caret = state.caret;
     const errors = state.errors;
     const passage = state.passage;
+    const prevStatus = state.room && state.room.status;
+
+    // During live race, only patch players — full applyRoom rebuilds DOM and feels laggy
+    if (wasRacing && room.status === "racing") {
+      state.room = room;
+      state.myId = socket.id;
+      // Keep local typing state
+      state.racing = true;
+      state.caret = caret;
+      state.errors = errors;
+      state.passage = passage || normalizeTypingText(room.passage || "");
+      // Soft-update player list stats without wiping input focus
+      room.players.forEach((p) => {
+        updatePlayerListRow(p);
+        if (p.id !== state.myId) {
+          updateTrackPlayer(p);
+        } else {
+          // still update track for me from local caret
+          updateTrackPlayer({
+            id: p.id,
+            progress: state.passage
+              ? Math.round((state.caret / state.passage.length) * 100)
+              : p.progress,
+            wpm: updateLocalStats().wpm,
+            accuracy: updateLocalStats().accuracy,
+            finished: p.finished,
+          });
+        }
+      });
+      els.playerCount.textContent = `${room.players.filter((p) => p.connected !== false).length}/${room.maxPlayers || 10}`;
+      return;
+    }
+
     applyRoom(room);
+
+    // If we entered countdown via room:update only (missed race:countdown), start UI countdown
+    if (room.status === "countdown" && prevStatus !== "countdown" && !wasCountdown) {
+      if (room.passage) state.passage = normalizeTypingText(room.passage);
+      els.countdownOverlay.hidden = false;
+      runCountdown(3000, els.countdownNum, els.countdownOverlay, null, Date.now() + 3000);
+    }
+
     if (wasRacing && room.status === "racing") {
       state.racing = true;
       state.caret = caret;
       state.errors = errors;
       state.passage = passage || normalizeTypingText(room.passage || "");
       els.typeInput.disabled =
-        state.caret >= state.passage.length || state.errors > 0 && room.mode === "sudden_death";
+        state.caret >= state.passage.length ||
+        (state.errors > 0 && room.mode === "sudden_death");
       renderPassage();
       updateLocalStats();
     }
   });
 
-  socket.on("race:countdown", ({ duration, passage, raceDurationMs, snapshot }) => {
-    if (snapshot) applyRoom(snapshot);
-    state.passage = normalizeTypingText(passage);
+  socket.on("race:countdown", (payload) => {
+    const { duration, endsAt, serverNow, passage, raceDurationMs, snapshot } = payload || {};
+    if (snapshot) {
+      state.room = snapshot;
+      state.myId = socket.id;
+      renderPlayers();
+      renderTracks();
+      setStatus("countdown");
+    }
+    state.passage = normalizeTypingText(passage || (snapshot && snapshot.passage) || "");
     state.caret = 0;
     state.errors = 0;
     state.typedWrong = false;
@@ -2233,12 +2458,22 @@
     els.resultsOverlay.hidden = true;
     renderPassage();
     renderTracks();
-    runCountdown(duration || 3200, els.countdownNum, els.countdownOverlay);
+
+    // Sync countdown end with server clock (correct for network delay)
+    let end = endsAt;
+    if (typeof endsAt === "number" && typeof serverNow === "number") {
+      const skew = Date.now() - serverNow;
+      end = endsAt + skew;
+    }
+    runCountdown(duration || 3000, els.countdownNum, els.countdownOverlay, null, end);
   });
 
   socket.on("race:start", ({ raceStart, passage, raceDurationMs, snapshot }) => {
+    cancelCountdown();
+    els.countdownOverlay.hidden = true;
     if (snapshot) {
       state.room = snapshot;
+      state.myId = socket.id;
       renderPlayers();
       renderTracks();
     }
@@ -2246,39 +2481,29 @@
   });
 
   socket.on("race:progress", (update) => {
+    if (!update || !update.id) return;
+    upsertPlayer(update);
     updateTrackPlayer(update);
-    if (state.room) {
-      const p = state.room.players.find((x) => x.id === update.id);
-      if (p) Object.assign(p, update);
-      if (state.room.mode === "team") {
-        state.room.teams = {
-          A: { ...(state.room.teams && state.room.teams.A), ...localTeamStats(state.room.players).A, id: "A" },
-          B: { ...(state.room.teams && state.room.teams.B), ...localTeamStats(state.room.players).B, id: "B" },
-        };
-        // refresh team aggregate tracks
-        const ts = localTeamStats(state.room.players);
-        ["A", "B"].forEach((key) => {
-          const row = els.trackBoard.querySelector(`.track[data-id="__team_${key}"]`);
-          if (!row) return;
-          const t = ts[key];
-          const fill = row.querySelector(".track-fill");
-          const racer = row.querySelector(".track-racer");
-          const wpm = row.querySelector(".track-wpm");
-          if (fill) fill.style.width = (t.progress || 0) + "%";
-          if (racer) racer.style.left = (t.progress || 0) + "%";
-          if (wpm) wpm.textContent = t.wpm || 0;
-        });
-        updateTeamChip();
-      }
-    }
-    const idx = state.room?.players.findIndex((x) => x.id === update.id) ?? -1;
-    // player list may include only players; skip team rows
-    const lis = [...els.playerList.children];
-    const li = lis[idx];
-    if (li) {
-      const sub = li.querySelector(".player-sub");
-      if (sub)
-        sub.textContent = `${update.wpm || 0} WPM · ${update.accuracy != null ? update.accuracy : 100}%`;
+    updatePlayerListRow(update);
+
+    if (state.room && state.room.mode === "team") {
+      const ts = localTeamStats(state.room.players);
+      state.room.teams = {
+        A: { id: "A", ...ts.A },
+        B: { id: "B", ...ts.B },
+      };
+      ["A", "B"].forEach((key) => {
+        const row = els.trackBoard.querySelector(`.track[data-id="__team_${key}"]`);
+        if (!row) return;
+        const t = ts[key];
+        const fill = row.querySelector(".track-fill");
+        const racer = row.querySelector(".track-racer");
+        const wpm = row.querySelector(".track-wpm");
+        if (fill) fill.style.width = (t.progress || 0) + "%";
+        if (racer) racer.style.left = (t.progress || 0) + "%";
+        if (wpm) wpm.textContent = t.wpm || 0;
+      });
+      updateTeamChip();
     }
   });
 
@@ -2324,20 +2549,40 @@
   });
 
   socket.on("player:joined", ({ player }) => {
+    if (player) {
+      upsertPlayer({ ...player, connected: true });
+      renderPlayers();
+      renderTracks();
+    }
     KeyClashFX.SFX.join();
-    toast(`${player.name} joined`);
+    toast(`${(player && player.name) || "Player"} joined`);
   });
 
-  socket.on("player:left", ({ name, reason }) => {
+  socket.on("player:left", ({ id, name, reason }) => {
+    if (state.room && id) {
+      state.room.players = state.room.players.filter((p) => p.id !== id);
+      renderPlayers();
+      renderTracks();
+    }
     toast(reason === "timeout" ? `${name || "Player"} timed out` : `${name || "A player"} left`);
   });
 
-  socket.on("player:disconnected", ({ name }) => {
+  socket.on("player:disconnected", ({ id, name }) => {
+    if (state.room && id) {
+      const p = state.room.players.find((x) => x.id === id);
+      if (p) p.connected = false;
+      renderPlayers();
+    }
     toast(`${name || "Player"} disconnected — can rejoin soon`);
   });
 
   socket.on("player:reconnected", ({ player }) => {
-    toast(`${player.name} reconnected`);
+    if (player) {
+      upsertPlayer({ ...player, connected: true });
+      renderPlayers();
+      renderTracks();
+    }
+    toast(`${(player && player.name) || "Player"} reconnected`);
   });
 
   socket.on("chat:message", (msg) => appendChat(msg));
@@ -2359,4 +2604,19 @@
 
   updateReconnectBanner();
   loadLeaderboard();
+
+  // Prefill room from share link even before socket connects
+  const urlRoom = getRoomFromUrl();
+  if (urlRoom && els.code) {
+    els.code.value = urlRoom;
+    if (els.shareHelpText) {
+      // keep help text
+    }
+  }
+  // Auto-join after short delay if already connected, else connect handler will
+  if (socket.connected) {
+    tryAutoJoinFromUrl();
+  } else if (urlRoom) {
+    toast("Connecting to room " + urlRoom + "…");
+  }
 })();
