@@ -2652,6 +2652,51 @@ body.settings-open {
   animation-duration: 0.5s;
 }
 
+.match-fallback {
+  margin: 0 0 14px;
+  padding: 12px;
+  border-radius: 14px;
+  text-align: left;
+  background: rgba(247, 37, 133, 0.08);
+  border: 1px solid rgba(247, 37, 133, 0.28);
+}
+
+.match-fallback-title {
+  margin: 0 0 4px;
+  font-weight: 700;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.match-fallback-hint {
+  margin: 0 0 10px;
+}
+
+.match-fallback-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.match-fallback-actions .btn {
+  min-height: 40px;
+}
+
+#results-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+#btn-find-new {
+  min-width: 140px;
+}
+
+#rematch-hint {
+  margin-top: 8px;
+}
+
 /* —— How to play —— */
 .how-to {
   margin: 0 0 18px;

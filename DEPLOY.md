@@ -60,6 +60,15 @@ Or **New → Blueprint** and select the repo (uses `render.yaml`).
 
 > Free tier may sleep after idle; first load can take ~30–60s.
 
+### Uptime & 1v1 reliability
+
+- **Keep-alive:** the app pings `/api/health` on a timer when `RENDER_EXTERNAL_URL` is set (Render sets this automatically). Default interval **8 minutes**. Override with `KEEP_ALIVE_MINUTES` or `KEEP_ALIVE_URL`.
+- Open tabs also ping health every ~8 minutes (while visible) to reduce sleep.
+- Free tier still sleeps eventually — **cold start UI** covers that. For reliable always-on 1v1:
+  - Upgrade to a **paid Render instance**, and/or
+  - Attach a **custom domain**
+- Privacy-friendly stats: `GET /api/stats` (1v1 match counts, languages — no personal data).
+
 ---
 
 ## C) Docker (any VPS / Railway Docker)

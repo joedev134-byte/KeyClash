@@ -21,6 +21,7 @@ const {
   MAX_PARAGRAPHS,
 } = require("./passages");
 const leaderboard = require("./leaderboard");
+const analytics = require("./analytics");
 const { censorText } = require("./censor");
 
 const app = express();
@@ -42,6 +43,8 @@ const RACE_TIMEOUT_MS = 120000;
 const TIMED_MS = 60000;
 const RECONNECT_GRACE_MS = 60000;
 const QUICK_MATCH_AUTOSTART_MS = 2200;
+/** After this wait, queue may match across languages (low-traffic soft match). */
+const MATCH_SOFT_LANG_MS = 15000;
 
 /** Online 1v1 queue: socketId → { socket, name, language, difficulty, mode, paragraphs, category, joinedAt } */
 const matchQueue = new Map();
@@ -50,7 +53,22 @@ app.use(express.json({ limit: "32kb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, service: "keyclash", rooms: rooms.size });
+  try {
+    analytics.trackHealthPing();
+  } catch (_) {}
+  res.json({
+    ok: true,
+    service: "keyclash",
+    rooms: rooms.size,
+    queue: matchQueue.size,
+    uptimeSec: Math.floor(process.uptime()),
+  });
+});
+
+/** Privacy-friendly aggregate stats (1v1 counts, languages — no personal data). */
+app.get("/api/stats", (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(analytics.getPublicStats());
 });
 
 app.get("/api/difficulties", (_req, res) => {
@@ -158,6 +176,7 @@ function publicPlayer(p) {
     name: p.name,
     color: p.color,
     ready: p.ready,
+    rematchWanted: !!p.rematchWanted,
     isHost: p.isHost,
     progress: p.progress,
     wpm: p.wpm,
@@ -280,6 +299,8 @@ function leaveMatchQueue(socketId) {
 }
 
 function findQueueMatch(entry) {
+  const now = Date.now();
+  const entryWait = now - (entry.joinedAt || now);
   let best = null;
   let bestScore = -1;
   for (const [id, other] of matchQueue) {
@@ -288,12 +309,17 @@ function findQueueMatch(entry) {
       matchQueue.delete(id);
       continue;
     }
-    // Same language required for a fair typing race
-    if (other.language !== entry.language) continue;
-    let score = 10;
+    const otherWait = now - (other.joinedAt || now);
+    const softLang =
+      entryWait >= MATCH_SOFT_LANG_MS && otherWait >= MATCH_SOFT_LANG_MS;
+    if (other.language !== entry.language && !softLang) continue;
+
+    let score = other.language === entry.language ? 20 : 5;
     if (other.difficulty === entry.difficulty) score += 5;
     if (other.mode === entry.mode) score += 3;
     if (other.category === entry.category) score += 1;
+    // Prefer longer-waiting opponents
+    score += Math.min(10, Math.floor(otherWait / 5000));
     if (score > bestScore) {
       bestScore = score;
       best = other;
@@ -304,7 +330,9 @@ function findQueueMatch(entry) {
 
 function createQuickMatchRoom(entryA, entryB) {
   const code = generateCode();
-  const language = entryA.language;
+  // Prefer shared language; if soft-matched across langs, use first player's
+  const language =
+    entryA.language === entryB.language ? entryA.language : entryA.language;
   const difficulty =
     entryA.difficulty === entryB.difficulty ? entryA.difficulty : "normal";
   const mode = entryA.mode === entryB.mode ? entryA.mode : "classic";
@@ -317,6 +345,8 @@ function createQuickMatchRoom(entryA, entryB) {
   // Both ready — race auto-starts shortly
   playerA.ready = true;
   playerB.ready = true;
+  playerA.rematchWanted = false;
+  playerB.rematchWanted = false;
 
   const room = {
     code,
@@ -359,19 +389,29 @@ function createQuickMatchRoom(entryA, entryB) {
     ok: true,
     room: snap,
     session: sessionPayload(room, playerA),
-    opponent: publicPlayer(playerB),
+    opponent: {
+      ...publicPlayer(playerB),
+      badgeWpm: entryB.lastWpm || null,
+    },
   };
   const payloadB = {
     ok: true,
     room: snap,
     session: sessionPayload(room, playerB),
-    opponent: publicPlayer(playerA),
+    opponent: {
+      ...publicPlayer(playerA),
+      badgeWpm: entryA.lastWpm || null,
+    },
   };
 
   sockA.emit("match:found", payloadA);
   sockB.emit("match:found", payloadB);
 
   emitRoom(room);
+
+  try {
+    analytics.trackMatch1v1({ language, mode, difficulty });
+  } catch (_) {}
 
   // Auto-start 1v1 after a short “found!” moment
   setTimeout(() => {
@@ -393,6 +433,18 @@ function tryPairFromQueue(entry) {
   matchQueue.delete(other.socketId);
   return createQuickMatchRoom(entry, other);
 }
+
+/** Periodic re-pair so soft language match kicks in after wait thresholds. */
+setInterval(() => {
+  const waiting = [...matchQueue.values()];
+  for (const entry of waiting) {
+    if (!matchQueue.has(entry.socketId)) continue;
+    const paired = tryPairFromQueue(entry);
+    if (paired) {
+      // paired players removed from queue inside tryPairFromQueue
+    }
+  }
+}, 3000);
 
 function emitRoom(room) {
   io.to(room.code).emit("room:update", roomSnapshot(room));
@@ -447,6 +499,7 @@ function createPlayer(socketId, name, color, isHost, team) {
     place: null,
     eliminated: false,
     seriesWins: 0,
+    rematchWanted: false,
     disconnected: false,
     graceTimer: null,
   };
@@ -621,6 +674,7 @@ function endRace(room) {
 
   [...room.players.values()].forEach((p) => {
     p.ready = false;
+    p.rematchWanted = false;
   });
 
   // Auto-submit top finisher to server leaderboard (best effort)
@@ -885,6 +939,10 @@ io.on("connection", (socket) => {
         socket.data.roomCode = null;
       }
 
+      const lastWpm = Math.min(
+        400,
+        Math.max(0, Math.round(Number(payload && payload.lastWpm) || 0))
+      );
       const entry = {
         socketId: socket.id,
         socket,
@@ -894,6 +952,7 @@ io.on("connection", (socket) => {
         mode: normalizeQuickMatchMode(payload && payload.mode),
         paragraphs: normalizeParagraphs(payload && payload.paragraphs),
         category: normalizeCategory(payload && payload.category),
+        lastWpm: lastWpm || null,
         joinedAt: Date.now(),
       };
 
@@ -920,6 +979,7 @@ io.on("connection", (socket) => {
           difficulty: entry.difficulty,
           mode: entry.mode,
           queueSize: matchQueue.size,
+          softLangAfterMs: MATCH_SOFT_LANG_MS,
         });
       }
       socket.emit("match:searching", {
@@ -927,6 +987,7 @@ io.on("connection", (socket) => {
         difficulty: entry.difficulty,
         mode: entry.mode,
         queueSize: matchQueue.size,
+        softLangAfterMs: MATCH_SOFT_LANG_MS,
       });
     } catch {
       if (typeof cb === "function") {
@@ -940,7 +1001,13 @@ io.on("connection", (socket) => {
   });
 
   socket.on("match:cancel", (_payload, cb) => {
+    const wasQueued = matchQueue.has(socket.id);
     const left = leaveMatchQueue(socket.id);
+    if (wasQueued && left) {
+      try {
+        analytics.trackQueueAbandon();
+      } catch (_) {}
+    }
     if (typeof cb === "function") {
       cb({
         ok: true,
@@ -950,6 +1017,91 @@ io.on("connection", (socket) => {
     }
     if (left) {
       socket.emit("match:cancelled", { queueSize: matchQueue.size });
+    }
+  });
+
+  /** 1v1 rematch — both players must request; then auto-starts next race. */
+  socket.on("match:rematch", (_payload, cb) => {
+    const room = rooms.get(socket.data.roomCode);
+    if (!room || !room.quickMatch) {
+      if (typeof cb === "function") {
+        cb({
+          ok: false,
+          error: "Rematch is only for 1v1 matches.",
+          code: "NOT_1V1",
+        });
+      }
+      return;
+    }
+    if (room.status !== "results") {
+      if (typeof cb === "function") {
+        cb({
+          ok: false,
+          error: "Wait for the race to finish.",
+          code: "BUSY",
+        });
+      }
+      return;
+    }
+    const player = room.players.get(socket.id);
+    if (!player || player.disconnected) {
+      if (typeof cb === "function") {
+        cb({ ok: false, error: "Not in this match.", code: "NOT_IN_ROOM" });
+      }
+      return;
+    }
+    const alive = activePlayers(room);
+    if (alive.length < 2) {
+      if (typeof cb === "function") {
+        cb({
+          ok: false,
+          error: "Opponent left. Find a new opponent instead.",
+          code: "OPPONENT_LEFT",
+        });
+      }
+      return;
+    }
+
+    player.rematchWanted = true;
+    const votes = alive.filter((p) => p.rematchWanted).length;
+    const needed = alive.length;
+    io.to(room.code).emit("match:rematch-status", {
+      votes,
+      needed,
+      by: { id: player.id, name: player.name },
+      readyIds: alive.filter((p) => p.rematchWanted).map((p) => p.id),
+    });
+    emitRoom(room);
+
+    if (votes >= needed) {
+      alive.forEach((p) => {
+        p.rematchWanted = false;
+        p.ready = true;
+      });
+      room.round = Math.max(1, (room.round || 1) + 1);
+      room.status = "lobby";
+      try {
+        analytics.trackRematch1v1({
+          language: room.language,
+          mode: room.mode,
+          difficulty: room.difficulty,
+        });
+      } catch (_) {}
+      startCountdown(room);
+      if (typeof cb === "function") {
+        cb({ ok: true, status: "starting", votes, needed });
+      }
+      return;
+    }
+
+    if (typeof cb === "function") {
+      cb({
+        ok: true,
+        status: "waiting",
+        votes,
+        needed,
+        message: "Waiting for opponent to rematch…",
+      });
     }
   });
 
@@ -1475,17 +1627,26 @@ io.on("connection", (socket) => {
 server.listen(PORT, () => {
   console.log(`\n  ⚡ KeyClash running at http://localhost:${PORT}\n`);
 
-  // Self keep-alive on Render (reduces free-tier sleep). RENDER_EXTERNAL_URL is set by Render.
+  // Self keep-alive on Render free tier (sleeps after ~15m idle).
+  // RENDER_EXTERNAL_URL is set by Render; override with KEEP_ALIVE_URL if needed.
+  // For more reliable 1v1: paid instance and/or custom domain (see DEPLOY.md).
   const external =
     process.env.RENDER_EXTERNAL_URL ||
     process.env.KEEP_ALIVE_URL ||
     "";
   if (external) {
     const url = external.replace(/\/$/, "") + "/api/health";
-    const mins = Math.max(5, Number(process.env.KEEP_ALIVE_MINUTES) || 10);
-    setInterval(() => {
+    // Default 8m — safer margin under free-tier sleep (~15m)
+    const mins = Math.max(5, Number(process.env.KEEP_ALIVE_MINUTES) || 8);
+    const ping = () => {
       fetch(url).catch(() => {});
-    }, mins * 60 * 1000);
+    };
+    setTimeout(ping, 45 * 1000); // first ping soon after boot
+    setInterval(ping, mins * 60 * 1000);
     console.log(`  ⏰ Keep-alive every ${mins}m → ${url}\n`);
+  } else {
+    console.log(
+      "  ⏰ Keep-alive off (set RENDER_EXTERNAL_URL or KEEP_ALIVE_URL to reduce free-tier sleep)\n"
+    );
   }
 });

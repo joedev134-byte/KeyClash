@@ -109,7 +109,14 @@
     matchMsg: document.getElementById("match-msg"),
     matchDetail: document.getElementById("match-detail"),
     matchTimer: document.getElementById("match-timer"),
+    matchFallback: document.getElementById("match-fallback"),
     btnMatchCancel: document.getElementById("btn-match-cancel"),
+    btnMatchKeep: document.getElementById("btn-match-keep"),
+    btnMatchPractice: document.getElementById("btn-match-practice"),
+    btnMatchCreate: document.getElementById("btn-match-create"),
+    btnMatchShare: document.getElementById("btn-match-share"),
+    btnFindNew: document.getElementById("btn-find-new"),
+    rematchHint: document.getElementById("rematch-hint"),
     homeError: document.getElementById("home-error"),
     homeDifficulty: document.getElementById("home-difficulty"),
     homeLanguage: document.getElementById("home-language"),
@@ -290,6 +297,8 @@
     matchmaking: false,
     matchSearchStartedAt: 0,
     matchTimerId: null,
+    matchFallbackShown: false,
+    lastMatchWpm: 0,
   };
 
   if (!MODE_META[state.mode]) state.mode = "classic";
@@ -1280,9 +1289,40 @@
     els.btnReady.textContent = state.ready ? "Unready" : "Ready";
     els.btnReady.disabled = busy;
     els.btnStart.disabled = busy;
+    const is1v1 = !!state.room.quickMatch;
+    const inResults = state.room.status === "results";
     if (els.btnRematch) {
-      els.btnRematch.hidden = !(host && state.room.status === "results");
-      els.btnRematch.textContent = els.btnStart.textContent;
+      if (is1v1 && inResults) {
+        // Both players can request rematch in 1v1
+        els.btnRematch.hidden = false;
+        const meP = me();
+        els.btnRematch.textContent = meP && meP.rematchWanted ? "Waiting…" : "Rematch";
+        els.btnRematch.disabled = !!(meP && meP.rematchWanted);
+        els.btnRematch.classList.add("btn-pulse");
+      } else {
+        els.btnRematch.hidden = !(host && inResults);
+        els.btnRematch.textContent = els.btnStart.textContent;
+        els.btnRematch.disabled = busy;
+      }
+    }
+    if (els.btnFindNew) {
+      els.btnFindNew.hidden = !(is1v1 && inResults);
+    }
+    if (els.rematchHint) {
+      if (is1v1 && inResults) {
+        const votes = (state.room.players || []).filter((p) => p.rematchWanted).length;
+        const need = (state.room.players || []).filter((p) => p.connected !== false).length;
+        if (votes > 0 && votes < need) {
+          els.rematchHint.hidden = false;
+          els.rematchHint.textContent =
+            votes + "/" + need + " want rematch — waiting for opponent…";
+        } else {
+          els.rematchHint.hidden = true;
+          els.rematchHint.textContent = "";
+        }
+      } else {
+        els.rematchHint.hidden = true;
+      }
     }
     if (els.btnCloseResults) {
       // Close is available to everyone when results are open
@@ -1649,6 +1689,9 @@
     const sorted = [...room.players].sort((a, b) => (a.place || 99) - (b.place || 99));
     const winner = sorted[0];
     const self = sorted.find((p) => p.id === state.myId);
+    if (self && self.wpm >= 5) {
+      state.lastMatchWpm = self.wpm;
+    }
 
     if (els.resultsTitle) {
       if (room.mode === "best_of_3" && room.seriesComplete) {
@@ -2306,10 +2349,24 @@
   }
 
   /* —— Online 1v1 matchmaking —— */
+  const MATCH_EMPTY_FALLBACK_SEC = 25;
+
   function stopMatchTimer() {
     if (state.matchTimerId) {
       clearInterval(state.matchTimerId);
       state.matchTimerId = null;
+    }
+  }
+
+  function setMatchFallbackVisible(show) {
+    state.matchFallbackShown = !!show;
+    if (els.matchFallback) els.matchFallback.hidden = !show;
+    if (show && els.matchTitle) {
+      els.matchTitle.textContent = "Still searching…";
+    }
+    if (show && els.matchMsg) {
+      els.matchMsg.textContent =
+        "No opponent yet. After ~15s we also try other languages. Or use a fallback below.";
     }
   }
 
@@ -2318,6 +2375,7 @@
     els.matchOverlay.hidden = false;
     const card = els.matchOverlay.querySelector(".match-card");
     if (card) card.classList.toggle("is-found", !searching);
+    setMatchFallbackVisible(false);
     if (searching) {
       if (els.matchTitle) els.matchTitle.textContent = "Finding opponent…";
       if (els.matchMsg) {
@@ -2336,17 +2394,25 @@
       }
       state.matchSearchStartedAt = Date.now();
       stopMatchTimer();
-      if (els.matchTimer) els.matchTimer.textContent = "0s";
+      if (els.matchTimer) els.matchTimer.textContent = "0s · est. wait varies";
       state.matchTimerId = setInterval(() => {
         if (!els.matchTimer) return;
         const s = Math.floor((Date.now() - state.matchSearchStartedAt) / 1000);
-        els.matchTimer.textContent = s + "s";
+        let est = "est. wait varies";
+        if (s < 15) est = "prefer same language";
+        else if (s < MATCH_EMPTY_FALLBACK_SEC) est = "opening to any language…";
+        else est = "low traffic — try a fallback";
+        els.matchTimer.textContent = s + "s · " + est;
+        if (s >= MATCH_EMPTY_FALLBACK_SEC && !state.matchFallbackShown) {
+          setMatchFallbackVisible(true);
+        }
       }, 250);
     }
   }
 
   function hideMatchOverlay() {
     if (els.matchOverlay) els.matchOverlay.hidden = true;
+    setMatchFallbackVisible(false);
     stopMatchTimer();
     state.matchmaking = false;
     if (els.btnMatch) els.btnMatch.disabled = false;
@@ -2379,6 +2445,13 @@
     const modeForMatch =
       state.mode === "ghost" || state.mode === "team" ? "classic" : state.mode;
 
+    // Best recent WPM for opponent badge (local ghost / last match)
+    let lastWpm = state.lastMatchWpm || 0;
+    try {
+      const g = Number(localStorage.getItem(GHOST_KEY));
+      if (Number.isFinite(g) && g > lastWpm) lastWpm = g;
+    } catch (_) {}
+
     socket.timeout(12000).emit(
       "match:find",
       {
@@ -2388,6 +2461,7 @@
         mode: modeForMatch,
         paragraphs: state.paragraphs,
         category: state.category,
+        lastWpm: lastWpm || undefined,
       },
       (err, res) => {
         if (err) {
@@ -2405,19 +2479,16 @@
           return;
         }
         if (res.status === "matched" && res.room) {
-          // match:found event also fires — enterGame may run twice; applyRoom is safe
           hideMatchOverlay();
-          // session arrives on match:found; if only here, still enter lobby
           if (!state.room || state.room.code !== res.room.code) {
             enterGame(res.room, null);
           }
           toast("Opponent found — race starting!");
           return;
         }
-        // status searching — wait for match:found
         if (els.matchMsg) {
           els.matchMsg.textContent =
-            "In queue… waiting for another player with the same language.";
+            "In queue… same language first; after 15s we try any language.";
         }
       }
     );
@@ -2429,10 +2500,60 @@
     const opp = payload.opponent;
     enterGame(payload.room, payload.session);
     const oppName = (opp && opp.name) || "Opponent";
-    toast("1v1 vs " + oppName + " — race starts soon!");
+    const badge =
+      opp && opp.badgeWpm
+        ? " · ~" + opp.badgeWpm + " WPM"
+        : "";
+    toast("1v1 vs " + oppName + badge + " — race starts soon!");
     if (els.inputHint) {
-      els.inputHint.textContent = "1v1 match found — get ready…";
+      els.inputHint.textContent =
+        "1v1 vs " + oppName + badge + " — get ready…";
     }
+    if (els.matchTitle) {
+      // no-op; overlay already hidden
+    }
+  }
+
+  function request1v1Rematch() {
+    socket.emit("match:rematch", {}, (res) => {
+      if (!res || !res.ok) {
+        toast((res && res.error) || "Could not rematch", true);
+        if (res && res.code === "OPPONENT_LEFT") {
+          if (els.btnFindNew) els.btnFindNew.hidden = false;
+        }
+        return;
+      }
+      if (res.status === "waiting") {
+        toast("Rematch requested — waiting for opponent…");
+        if (els.rematchHint) {
+          els.rematchHint.hidden = false;
+          els.rematchHint.textContent =
+            (res.votes || 1) +
+            "/" +
+            (res.needed || 2) +
+            " want rematch — waiting for opponent…";
+        }
+        if (els.btnRematch) {
+          els.btnRematch.textContent = "Waiting…";
+          els.btnRematch.disabled = true;
+        }
+      } else if (res.status === "starting") {
+        toast("Rematch! Race starting…");
+      }
+    });
+  }
+
+  function leaveAndFindNewOpponent() {
+    socket.emit("room:leave", () => {
+      clearSession();
+      state.room = null;
+      state.racing = false;
+      endLocalRace();
+      stopUiTimer();
+      showScreen("home");
+      toast("Finding a new opponent…");
+      setTimeout(() => startMatchmaking(), 200);
+    });
   }
 
   els.btnCreate.addEventListener("click", () => {
@@ -2480,6 +2601,46 @@
   if (els.btnMatchCancel) {
     els.btnMatchCancel.addEventListener("click", () => cancelMatchmaking(false));
   }
+  if (els.btnMatchKeep) {
+    els.btnMatchKeep.addEventListener("click", () => {
+      setMatchFallbackVisible(false);
+      state.matchFallbackShown = true; // prevent flicker; re-show after another 25s
+      state.matchSearchStartedAt = Date.now();
+      if (els.matchTitle) els.matchTitle.textContent = "Still searching…";
+      if (els.matchMsg) {
+        els.matchMsg.textContent = "Keeping you in queue. Hang tight…";
+      }
+      toast("Still searching for an opponent");
+      // Allow fallback again after another empty wait
+      setTimeout(() => {
+        if (state.matchmaking) state.matchFallbackShown = false;
+      }, MATCH_EMPTY_FALLBACK_SEC * 1000);
+    });
+  }
+  if (els.btnMatchPractice) {
+    els.btnMatchPractice.addEventListener("click", () => {
+      cancelMatchmaking(true);
+      startPractice();
+      toast("Practice Solo — no lobby needed");
+    });
+  }
+  if (els.btnMatchCreate) {
+    els.btnMatchCreate.addEventListener("click", () => {
+      cancelMatchmaking(true);
+      if (els.btnCreate) els.btnCreate.click();
+    });
+  }
+  if (els.btnMatchShare) {
+    els.btnMatchShare.addEventListener("click", async () => {
+      // Stay in queue; copy game URL so friends can open + Find 1v1 or join a room
+      const url = getGameUrl();
+      await copyText(url, "Game link copied — share so friends can play!");
+      if (els.matchMsg) {
+        els.matchMsg.textContent =
+          "Link copied. Friends can open it and tap Find 1v1 Opponent too.";
+      }
+    });
+  }
 
   socket.on("match:found", (payload) => {
     onMatchFound(payload);
@@ -2487,9 +2648,11 @@
 
   socket.on("match:searching", (info) => {
     if (!state.matchmaking) return;
-    if (els.matchMsg) {
+    if (els.matchMsg && !state.matchFallbackShown) {
       els.matchMsg.textContent =
-        "Searching… queue " + ((info && info.queueSize) || 1) + " player(s).";
+        "Searching… queue " +
+        ((info && info.queueSize) || 1) +
+        " player(s). Same language first.";
     }
   });
 
@@ -2522,12 +2685,40 @@
   });
 
   function requestStart() {
+    // 1v1 rematch uses dedicated vote flow so both players must agree
+    if (state.room && state.room.quickMatch && state.room.status === "results") {
+      request1v1Rematch();
+      return;
+    }
     socket.emit("race:request-start", {}, (res) => {
       if (res && res.ok === false) toast(res.error || "Could not start", true);
     });
   }
   els.btnStart.addEventListener("click", requestStart);
   if (els.btnRematch) els.btnRematch.addEventListener("click", requestStart);
+  if (els.btnFindNew) {
+    els.btnFindNew.addEventListener("click", () => leaveAndFindNewOpponent());
+  }
+
+  socket.on("match:rematch-status", (info) => {
+    if (!info || !state.room || !state.room.quickMatch) return;
+    if (els.rematchHint) {
+      els.rematchHint.hidden = false;
+      els.rematchHint.textContent =
+        (info.votes || 0) +
+        "/" +
+        (info.needed || 2) +
+        " want rematch" +
+        (info.by && info.by.name ? " · " + info.by.name + " ready" : "");
+    }
+    // Mark local players for UI
+    if (state.room.players && Array.isArray(info.readyIds)) {
+      state.room.players.forEach((p) => {
+        p.rematchWanted = info.readyIds.indexOf(p.id) !== -1;
+      });
+      renderPlayers();
+    }
+  });
 
   if (els.btnCloseResults) {
     els.btnCloseResults.addEventListener("click", () => {
@@ -3175,6 +3366,13 @@
   renderRecentRooms();
   loadLeaderboard();
   syncVisualViewport();
+
+  // Client-side keep-alive while tab is open (helps free Render stay awake)
+  const CLIENT_KEEPALIVE_MS = 8 * 60 * 1000;
+  setInterval(() => {
+    if (document.visibilityState === "hidden") return;
+    fetch("/api/health", { cache: "no-store" }).catch(() => {});
+  }, CLIENT_KEEPALIVE_MS);
 
   // Prefill room from share link even before socket connects
   const urlRoom = getRoomFromUrl();

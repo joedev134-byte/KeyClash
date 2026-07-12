@@ -158,6 +158,21 @@
         </p>
         <p class="match-sub" id="match-detail">Language · Difficulty · Mode</p>
         <p class="match-timer" id="match-timer">0s</p>
+
+        <!-- Shown after ~25s with nobody online -->
+        <div id="match-fallback" class="match-fallback" hidden>
+          <p class="match-fallback-title">Nobody online yet?</p>
+          <p class="field-hint match-fallback-hint">
+            Low traffic is normal on free hosting. Keep waiting, or play another way:
+          </p>
+          <div class="match-fallback-actions">
+            <button type="button" class="btn btn-primary btn-sm" id="btn-match-keep">Keep waiting</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-match-practice">Practice Solo</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-match-create">Create Room</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-match-share">Share invite</button>
+          </div>
+        </div>
+
         <button type="button" class="btn btn-secondary" id="btn-match-cancel">Cancel search</button>
       </div>
     </div>
@@ -607,8 +622,10 @@
               <p class="results-hint" id="results-hint">Host can start the next round</p>
               <div class="results-actions" id="results-actions">
                 <button id="btn-rematch" class="btn btn-primary btn-pulse" type="button" hidden>Next Round</button>
+                <button id="btn-find-new" class="btn btn-match btn-sm" type="button" hidden>Find new opponent</button>
                 <button id="btn-close-results" class="btn btn-secondary" type="button">Close</button>
               </div>
+              <p id="rematch-hint" class="results-hint" hidden></p>
             </div>
           </div>
 

@@ -23,7 +23,10 @@ Open **http://localhost:3000**
   - **Sudden Death** — one mistake and you’re out
 - **Practice Solo** (same language/mode/difficulty)
 - **Find 1v1 Opponent** — online random matchmaking (real player, not ghost)
+  - Empty-queue fallback (Practice / Create Room / Share invite)
+  - **Rematch** same opponent or **Find new**
 - **Leaderboard** — server + this-device personal best
+- **Stats** — `GET /api/stats` (aggregate 1v1 counts / languages, no personal data)
 - **Deploy-ready** — see [DEPLOY.md](./DEPLOY.md)
 
 ## Deploy (shareable link)
