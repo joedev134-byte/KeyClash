@@ -58,22 +58,48 @@ const matchQueue = new Map();
 
 app.use(express.json({ limit: "32kb" }));
 
-/** Inject absolute OG image URLs so Discord/FB previews work. */
+function requestOrigin(req) {
+  // Prefer HTTPS in production (Render / reverse proxies)
+  let proto = (req.get("x-forwarded-proto") || req.protocol || "https")
+    .split(",")[0]
+    .trim()
+    .toLowerCase();
+  if (proto !== "http" && proto !== "https") proto = "https";
+  // Force https for non-local hosts so social crawlers accept og:image
+  const host = (req.get("x-forwarded-host") || req.get("host") || "localhost")
+    .split(",")[0]
+    .trim();
+  const isLocal = /^localhost\b|^127\.0\.0\.1\b/i.test(host);
+  if (!isLocal) proto = "https";
+  return proto + "://" + host;
+}
+
+/** Inject absolute OG image URLs so Discord/FB/Messenger previews work (PNG required). */
 app.get(["/", "/index.html"], (req, res) => {
   try {
     const indexPath = path.join(__dirname, "public", "index.html");
     let html = fs.readFileSync(indexPath, "utf8");
-    const proto = (req.get("x-forwarded-proto") || req.protocol || "https").split(",")[0].trim();
-    const host = req.get("x-forwarded-host") || req.get("host") || "localhost";
-    const origin = proto + "://" + host;
-    const ogImage = origin + "/og-image.svg";
+    const origin = requestOrigin(req);
+    // Cache-bust query helps scrapers pick up image updates
+    const ogImage = origin + "/og-image.png?v=2";
     html = html
       .replace(/__OG_URL__/g, origin + "/")
       .replace(/__OG_IMAGE__/g, ogImage);
+    res.set("Cache-Control", "public, max-age=300");
     res.type("html").send(html);
   } catch (e) {
     res.sendFile(path.join(__dirname, "public", "index.html"));
   }
+});
+
+// Explicit OG image route with long cache + correct content-type
+app.get("/og-image.png", (req, res) => {
+  const file = path.join(__dirname, "public", "og-image.png");
+  res.set({
+    "Content-Type": "image/png",
+    "Cache-Control": "public, max-age=86400",
+  });
+  res.sendFile(file);
 });
 
 app.use(express.static(path.join(__dirname, "public")));
