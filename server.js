@@ -55,6 +55,8 @@ const MATCH_SOFT_LANG_MS = 15000;
 
 /** Online 1v1 queue: socketId → { socket, name, language, difficulty, mode, paragraphs, category, joinedAt } */
 const matchQueue = new Map();
+/** Friend duel invites while searching: code → { hostSocketId, entry, createdAt } */
+const duelInvites = new Map();
 
 app.use(express.json({ limit: "32kb" }));
 
@@ -104,6 +106,12 @@ app.get("/og-image.png", (req, res) => {
 
 app.use(express.static(path.join(__dirname, "public")));
 
+/** Lightweight ping for external uptime monitors (UptimeRobot, cron-job.org). */
+app.get("/api/ping", (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({ ok: true, t: Date.now() });
+});
+
 app.get("/api/health", (_req, res) => {
   try {
     analytics.trackHealthPing();
@@ -118,6 +126,7 @@ app.get("/api/health", (_req, res) => {
     rooms: rooms.size,
     queue: matchQueue.size,
     online: online,
+    duels: duelInvites.size,
     uptimeSec: Math.floor(process.uptime()),
   });
 });
@@ -125,7 +134,30 @@ app.get("/api/health", (_req, res) => {
 /** Privacy-friendly aggregate stats (1v1 counts, languages — no personal data). */
 app.get("/api/stats", (_req, res) => {
   res.set("Cache-Control", "no-store");
-  res.json(analytics.getPublicStats());
+  const base = analytics.getPublicStats();
+  const online =
+    (io.engine && io.engine.clientsCount) ||
+    (io.sockets && io.sockets.sockets && io.sockets.sockets.size) ||
+    0;
+  res.json({
+    ...base,
+    live: {
+      online,
+      queue: matchQueue.size,
+      rooms: rooms.size,
+      duels: duelInvites.size,
+    },
+  });
+});
+
+app.get("/api/daily/profile", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const name = req.query.name || "Racer";
+  res.json({
+    ok: true,
+    profile: daily.getProfile(name),
+    badges: daily.listBadges(),
+  });
 });
 
 app.get("/api/daily", (req, res) => {
@@ -368,12 +400,27 @@ function normalizeQuickMatchMode(mode) {
   return m;
 }
 
+function clearDuelInvitesForSocket(socketId) {
+  for (const [code, inv] of duelInvites) {
+    if (inv.hostSocketId === socketId) duelInvites.delete(code);
+  }
+}
+
 function leaveMatchQueue(socketId) {
+  clearDuelInvitesForSocket(socketId);
   if (matchQueue.has(socketId)) {
     matchQueue.delete(socketId);
     return true;
   }
   return false;
+}
+
+function generateDuelCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  if (duelInvites.has(code) || rooms.has(code)) return generateDuelCode();
+  return code;
 }
 
 function findQueueMatch(entry) {
@@ -1136,6 +1183,154 @@ io.on("connection", (socket) => {
     }
   });
 
+  /**
+   * Create a friend duel invite while searching (or start searching + invite).
+   * Friend opens /?duel=CODE and joins for guaranteed 1v1.
+   */
+  socket.on("match:invite-create", (payload, cb) => {
+    try {
+      let entry = matchQueue.get(socket.id);
+      if (!entry) {
+        // Ensure host is in queue with current prefs
+        const lastWpm = Math.min(
+          400,
+          Math.max(0, Math.round(Number(payload && payload.lastWpm) || 0))
+        );
+        if (socket.data.roomCode) {
+          const existing = rooms.get(socket.data.roomCode);
+          if (existing) removePlayerFromRoom(existing, socket.id, "left");
+          socket.leave(socket.data.roomCode);
+          socket.data.roomCode = null;
+        }
+        entry = {
+          socketId: socket.id,
+          socket,
+          name: sanitizeName(payload && payload.name),
+          language: normalizeLanguage(payload && payload.language),
+          difficulty: normalizeDifficulty(payload && payload.difficulty),
+          mode: normalizeQuickMatchMode(payload && payload.mode),
+          paragraphs: normalizeParagraphs(payload && payload.paragraphs),
+          category: normalizeCategory(payload && payload.category),
+          lastWpm: lastWpm || null,
+          joinedAt: Date.now(),
+        };
+        matchQueue.set(socket.id, entry);
+      }
+
+      clearDuelInvitesForSocket(socket.id);
+      const code = generateDuelCode();
+      duelInvites.set(code, {
+        hostSocketId: socket.id,
+        entry,
+        createdAt: Date.now(),
+      });
+      // Expire invite after 10 minutes
+      setTimeout(() => {
+        const inv = duelInvites.get(code);
+        if (inv && inv.hostSocketId === socket.id) duelInvites.delete(code);
+      }, 10 * 60 * 1000);
+
+      if (typeof cb === "function") {
+        cb({
+          ok: true,
+          inviteCode: code,
+          expiresInMs: 10 * 60 * 1000,
+          queueSize: matchQueue.size,
+        });
+      }
+      socket.emit("match:invite-ready", { inviteCode: code });
+    } catch {
+      if (typeof cb === "function") {
+        cb({ ok: false, error: "Could not create invite.", code: "INVITE_FAILED" });
+      }
+    }
+  });
+
+  /** Friend joins a duel invite → immediate 1v1 room with host. */
+  socket.on("match:invite-join", (payload, cb) => {
+    try {
+      const code = String((payload && payload.code) || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "")
+        .slice(0, 6);
+      if (!code) {
+        if (typeof cb === "function") {
+          cb({ ok: false, error: "Missing duel code.", code: "CODE_REQUIRED" });
+        }
+        return;
+      }
+      const inv = duelInvites.get(code);
+      if (!inv) {
+        if (typeof cb === "function") {
+          cb({
+            ok: false,
+            error: "Invite expired or not found. Ask your friend for a new link.",
+            code: "INVITE_GONE",
+          });
+        }
+        return;
+      }
+      if (inv.hostSocketId === socket.id) {
+        if (typeof cb === "function") {
+          cb({ ok: false, error: "You cannot join your own invite.", code: "SELF" });
+        }
+        return;
+      }
+      const hostEntry = matchQueue.get(inv.hostSocketId) || inv.entry;
+      if (!hostEntry || !hostEntry.socket || !hostEntry.socket.connected) {
+        duelInvites.delete(code);
+        leaveMatchQueue(inv.hostSocketId);
+        if (typeof cb === "function") {
+          cb({
+            ok: false,
+            error: "Host went offline. Ask them to search again.",
+            code: "HOST_OFFLINE",
+          });
+        }
+        return;
+      }
+
+      leaveMatchQueue(socket.id);
+      if (socket.data.roomCode) {
+        const existing = rooms.get(socket.data.roomCode);
+        if (existing) removePlayerFromRoom(existing, socket.id, "left");
+        socket.leave(socket.data.roomCode);
+        socket.data.roomCode = null;
+      }
+
+      const guestEntry = {
+        socketId: socket.id,
+        socket,
+        name: sanitizeName(payload && payload.name),
+        language: hostEntry.language,
+        difficulty: hostEntry.difficulty,
+        mode: hostEntry.mode,
+        paragraphs: hostEntry.paragraphs,
+        category: hostEntry.category,
+        lastWpm: Math.min(400, Math.max(0, Math.round(Number(payload && payload.lastWpm) || 0))) || null,
+        joinedAt: Date.now(),
+      };
+
+      duelInvites.delete(code);
+      matchQueue.delete(inv.hostSocketId);
+      matchQueue.delete(socket.id);
+
+      const room = createQuickMatchRoom(hostEntry, guestEntry);
+      if (typeof cb === "function") {
+        cb({
+          ok: true,
+          status: "matched",
+          room: roomSnapshot(room),
+        });
+      }
+    } catch {
+      if (typeof cb === "function") {
+        cb({ ok: false, error: "Could not join duel.", code: "JOIN_FAILED" });
+      }
+    }
+  });
+
   /** 1v1 rematch — both players must request; then auto-starts next race. */
   socket.on("match:rematch", (_payload, cb) => {
     const room = rooms.get(socket.data.roomCode);
@@ -1768,24 +1963,35 @@ server.listen(PORT, () => {
 
   // Self keep-alive on Render free tier (sleeps after ~15m idle).
   // RENDER_EXTERNAL_URL is set by Render; override with KEEP_ALIVE_URL if needed.
-  // For more reliable 1v1: paid instance and/or custom domain (see DEPLOY.md).
+  // Best reliability: external UptimeRobot → /api/ping every 5m (see DEPLOY.md).
   const external =
     process.env.RENDER_EXTERNAL_URL ||
     process.env.KEEP_ALIVE_URL ||
     "";
   if (external) {
-    const url = external.replace(/\/$/, "") + "/api/health";
-    // Default 8m — safer margin under free-tier sleep (~15m)
-    const mins = Math.max(5, Number(process.env.KEEP_ALIVE_MINUTES) || 8);
+    const base = external.replace(/\/$/, "");
+    const urls = [base + "/api/ping", base + "/api/health"];
+    // Default 5m — tighter against free-tier sleep (~15m)
+    const mins = Math.max(3, Number(process.env.KEEP_ALIVE_MINUTES) || 5);
     const ping = () => {
-      fetch(url).catch(() => {});
+      urls.forEach((url) => {
+        fetch(url).catch(() => {});
+      });
     };
-    setTimeout(ping, 45 * 1000); // first ping soon after boot
+    setTimeout(ping, 20 * 1000);
     setInterval(ping, mins * 60 * 1000);
-    console.log(`  ⏰ Keep-alive every ${mins}m → ${url}\n`);
+    console.log(`  ⏰ Keep-alive every ${mins}m → ${urls.join(" + ")}\n`);
   } else {
     console.log(
-      "  ⏰ Keep-alive off (set RENDER_EXTERNAL_URL or KEEP_ALIVE_URL to reduce free-tier sleep)\n"
+      "  ⏰ Keep-alive off (set RENDER_EXTERNAL_URL or KEEP_ALIVE_URL). Use UptimeRobot on /api/ping.\n"
     );
   }
+
+  // Clean expired duel invites every minute
+  setInterval(() => {
+    const now = Date.now();
+    for (const [code, inv] of duelInvites) {
+      if (now - (inv.createdAt || 0) > 10 * 60 * 1000) duelInvites.delete(code);
+    }
+  }, 60 * 1000);
 });

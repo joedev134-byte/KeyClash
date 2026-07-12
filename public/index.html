@@ -169,17 +169,28 @@
         <p class="match-sub" id="match-detail">Language · Difficulty · Mode</p>
         <p class="match-timer" id="match-timer">0s</p>
 
+        <!-- Always available: invite a friend into your 1v1 search -->
+        <div class="match-invite-box">
+          <p class="field-hint" style="margin:0 0 8px">
+            Friend free? Invite them into this search for a guaranteed 1v1.
+          </p>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-match-invite">
+            Invite friend to duel
+          </button>
+          <code id="match-invite-url" class="match-invite-url" hidden></code>
+        </div>
+
         <!-- Shown after ~25s with nobody online -->
         <div id="match-fallback" class="match-fallback" hidden>
           <p class="match-fallback-title">Nobody online yet?</p>
           <p class="field-hint match-fallback-hint">
-            Low traffic is normal on free hosting. Keep waiting, or play another way:
+            Low traffic is normal on free hosting. Keep waiting, invite a friend, or play another way:
           </p>
           <div class="match-fallback-actions">
             <button type="button" class="btn btn-primary btn-sm" id="btn-match-keep">Keep waiting</button>
             <button type="button" class="btn btn-secondary btn-sm" id="btn-match-practice">Practice Solo</button>
             <button type="button" class="btn btn-secondary btn-sm" id="btn-match-create">Create Room</button>
-            <button type="button" class="btn btn-secondary btn-sm" id="btn-match-share">Share invite</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-match-share">Share game link</button>
           </div>
         </div>
 
@@ -211,10 +222,17 @@
             <span class="live-dot" aria-hidden="true"></span>
             <span id="live-status-text">Checking players…</span>
           </p>
+          <p id="stats-strip" class="stats-strip" aria-live="polite">
+            Loading activity…
+          </p>
           <h1 class="logo">
             <span class="logo-key">KEY</span><span class="logo-clash">CLASH</span>
           </h1>
           <p class="tagline">Type fast. Type clean. Take the crown.</p>
+          <div id="streak-strip" class="streak-strip" hidden>
+            <span id="streak-text">Daily streak: 0</span>
+            <div id="badge-row" class="badge-row"></div>
+          </div>
         </header>
 
         <div class="home-card glass">

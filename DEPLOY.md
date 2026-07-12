@@ -60,14 +60,37 @@ Or **New → Blueprint** and select the repo (uses `render.yaml`).
 
 > Free tier may sleep after idle; first load can take ~30–60s.
 
-### Uptime & 1v1 reliability
+### Uptime & 1v1 reliability (always-on tips)
 
-- **Keep-alive:** the app pings `/api/health` on a timer when `RENDER_EXTERNAL_URL` is set (Render sets this automatically). Default interval **8 minutes**. Override with `KEEP_ALIVE_MINUTES` or `KEEP_ALIVE_URL`.
-- Open tabs also ping health every ~8 minutes (while visible) to reduce sleep.
-- Free tier still sleeps eventually — **cold start UI** covers that. For reliable always-on 1v1:
-  - Upgrade to a **paid Render instance**, and/or
-  - Attach a **custom domain**
-- Privacy-friendly stats: `GET /api/stats` (1v1 match counts, languages — no personal data).
+Free Render **sleeps after ~15 minutes idle**. KeyClash already:
+
+1. **Self keep-alive** — pings `/api/ping` + `/api/health` every **5 minutes** when `RENDER_EXTERNAL_URL` is set (Render injects this). Override with `KEEP_ALIVE_MINUTES` or `KEEP_ALIVE_URL`.
+2. **Open browser tabs** — ping `/api/ping` every ~4 minutes while the page is visible.
+3. **Cold-start UI** — shows a wait message if the free instance is waking up.
+
+#### External uptime pinger (recommended, free)
+
+Use a free monitor so the server stays warmer even with no players:
+
+1. Create an account: [UptimeRobot](https://uptimerobot.com) (or cron-job.org / Better Stack)
+2. **Add New Monitor**
+   - Type: **HTTP(s)**
+   - URL: `https://YOUR-APP.onrender.com/api/ping`
+   - Interval: **5 minutes**
+3. Save — that external ping helps prevent free-tier sleep
+
+#### For true always-on 1v1
+
+- Upgrade to a **paid Render instance** (no sleep), and/or
+- Attach a **custom domain**
+
+#### APIs
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/ping` | Lightweight uptime check |
+| `GET /api/health` | Online / queue / rooms |
+| `GET /api/stats` | Aggregate 1v1 counts + live strip data (no personal data) |
 
 ---
 

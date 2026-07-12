@@ -119,9 +119,15 @@
     rematchHint: document.getElementById("rematch-hint"),
     btnDaily: document.getElementById("btn-daily"),
     liveStatusText: document.getElementById("live-status-text"),
+    statsStrip: document.getElementById("stats-strip"),
+    streakStrip: document.getElementById("streak-strip"),
+    streakText: document.getElementById("streak-text"),
+    badgeRow: document.getElementById("badge-row"),
     dailyBoardList: document.getElementById("daily-board-list"),
     dailyBoardMeta: document.getElementById("daily-board-meta"),
     btnRefreshDaily: document.getElementById("btn-refresh-daily"),
+    btnMatchInvite: document.getElementById("btn-match-invite"),
+    matchInviteUrl: document.getElementById("match-invite-url"),
     shareCard: document.getElementById("share-card"),
     shareCardText: document.getElementById("share-card-text"),
     btnShareResult: document.getElementById("btn-share-result"),
@@ -315,6 +321,8 @@
     lastMatchWpm: 0,
     dailyChallenge: false,
     lastShareText: "",
+    duelInviteCode: null,
+    badgeMeta: {},
   };
 
   if (!MODE_META[state.mode]) state.mode = "classic";
@@ -370,7 +378,9 @@
       renderRecentRooms();
       loadLeaderboard();
       loadDailyBoard();
+      loadDailyProfile();
       refreshLiveStatus();
+      refreshStatsStrip();
       startLeaderboardHomePoll();
       startLiveStatusPoll();
       document.body.classList.remove("keyboard-open");
@@ -2229,12 +2239,19 @@
         return;
       }
       els.dailyBoardList.innerHTML = entries
-        .map(
-          (e, i) =>
+        .map((e, i) => {
+          const streak =
+            e.streak > 1 ? " · 🔥" + e.streak + "d" : "";
+          const badges = (e.badges || [])
+            .slice(0, 2)
+            .map((id) => (BADGE_LABELS[id] && BADGE_LABELS[id].icon) || "")
+            .join("");
+          return (
             `<li><span class="lb-rank">#${i + 1}</span> <strong>${escapeHtml(
               e.name
-            )}</strong> <span class="lb-meta">${e.wpm} WPM · ${e.accuracy}%</span></li>`
-        )
+            )}</strong> <span class="lb-meta">${e.wpm} WPM · ${e.accuracy}%${streak} ${badges}</span></li>`
+          );
+        })
         .join("");
     } catch {
       /* ignore */
@@ -2250,7 +2267,10 @@
   }
   function startLiveStatusPoll() {
     stopLiveStatusPoll();
-    liveStatusPoll = setInterval(refreshLiveStatus, 12000);
+    liveStatusPoll = setInterval(() => {
+      refreshLiveStatus();
+      refreshStatsStrip();
+    }, 12000);
   }
   async function refreshLiveStatus() {
     if (!els.liveStatusText) return;
@@ -2272,6 +2292,227 @@
     } catch {
       els.liveStatusText.textContent = "Server status unavailable";
     }
+  }
+
+  async function refreshStatsStrip() {
+    if (!els.statsStrip) return;
+    try {
+      const res = await fetch("/api/stats?_=" + Date.now(), { cache: "no-store" });
+      if (!res.ok) throw new Error("bad");
+      const data = await res.json();
+      const today = (data.today && data.today.match1v1) || 0;
+      const topLang =
+        data.languages && data.languages[0]
+          ? langLabel(data.languages[0].id)
+          : "—";
+      const online =
+        data.live && data.live.online != null ? data.live.online : "—";
+      const queue =
+        data.live && data.live.queue != null ? data.live.queue : "—";
+      els.statsStrip.textContent =
+        today +
+        " 1v1s today · Top lang: " +
+        topLang +
+        " · " +
+        online +
+        " online · " +
+        queue +
+        " in queue";
+    } catch {
+      els.statsStrip.textContent = "Activity stats unavailable";
+    }
+  }
+
+  const BADGE_LABELS = {
+    first_clear: { label: "First Clear", icon: "🏁" },
+    wpm_50: { label: "50 WPM Club", icon: "⚡" },
+    wpm_100: { label: "100 WPM Club", icon: "🔥" },
+    wpm_150: { label: "150 WPM Elite", icon: "👑" },
+    streak_3: { label: "3-Day Streak", icon: "📅" },
+    streak_7: { label: "7-Day Streak", icon: "💎" },
+    perfect: { label: "Perfect Accuracy", icon: "🎯" },
+  };
+
+  function renderStreakStrip(profile, newBadges) {
+    if (!els.streakStrip) return;
+    if (!profile || (!profile.totalDaily && !profile.streak)) {
+      // still show if we have local progress
+    }
+    els.streakStrip.hidden = false;
+    const streak = profile.streak || 0;
+    const best = profile.bestStreak || 0;
+    const bestWpm = profile.bestWpm || 0;
+    if (els.streakText) {
+      els.streakText.textContent =
+        "Daily streak: " +
+        streak +
+        " day" +
+        (streak === 1 ? "" : "s") +
+        (best > streak ? " · best " + best : "") +
+        (bestWpm ? " · best " + bestWpm + " WPM" : "");
+    }
+    if (els.badgeRow) {
+      const badges = profile.badges || [];
+      const newIds = new Set(
+        (newBadges || []).map((b) => (typeof b === "string" ? b : b.id))
+      );
+      if (!badges.length) {
+        els.badgeRow.innerHTML =
+          '<span class="field-hint">Play Daily Challenge to earn badges</span>';
+      } else {
+        els.badgeRow.innerHTML = badges
+          .map((id) => {
+            const meta = BADGE_LABELS[id] || { label: id, icon: "🏅" };
+            const isNew = newIds.has(id);
+            return (
+              '<span class="ach-badge' +
+              (isNew ? " new" : "") +
+              '" title="' +
+              escapeHtml(meta.label) +
+              '">' +
+              meta.icon +
+              " " +
+              escapeHtml(meta.label) +
+              "</span>"
+            );
+          })
+          .join("");
+      }
+    }
+  }
+
+  async function loadDailyProfile() {
+    try {
+      const res = await fetch(
+        "/api/daily/profile?name=" + encodeURIComponent(getName()),
+        { cache: "no-store" }
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && data.profile) renderStreakStrip(data.profile, []);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function duelInviteUrl(code) {
+    return getGameUrl().replace(/\/$/, "") + "/?duel=" + encodeURIComponent(code);
+  }
+
+  async function createDuelInvite() {
+    if (!socket.connected) {
+      toast("Not connected yet", true);
+      return;
+    }
+    // Ensure we're searching first
+    if (!state.matchmaking) {
+      startMatchmaking();
+      // slight delay so queue entry exists
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    const modeForMatch =
+      state.mode === "ghost" || state.mode === "team" ? "classic" : state.mode;
+    socket.timeout(10000).emit(
+      "match:invite-create",
+      {
+        name: getName(),
+        language: state.language,
+        difficulty: state.difficulty,
+        mode: modeForMatch,
+        paragraphs: state.paragraphs,
+        category: state.category,
+        lastWpm: state.lastMatchWpm || undefined,
+      },
+      async (err, res) => {
+        if (err || !res || !res.ok) {
+          toast((res && res.error) || "Could not create invite", true);
+          return;
+        }
+        state.duelInviteCode = res.inviteCode;
+        state.matchmaking = true;
+        if (els.btnMatch) els.btnMatch.disabled = true;
+        showMatchOverlay(true);
+        const url = duelInviteUrl(res.inviteCode);
+        if (els.matchInviteUrl) {
+          els.matchInviteUrl.hidden = false;
+          els.matchInviteUrl.textContent = url;
+        }
+        if (els.matchMsg) {
+          els.matchMsg.textContent =
+            "Invite ready — send the link to a friend for a guaranteed 1v1.";
+        }
+        await copyText(
+          "1v1 me on KeyClash!\n" + url + "\n(Duel code: " + res.inviteCode + ")",
+          "Duel invite copied — share with a friend"
+        );
+      }
+    );
+  }
+
+  function tryJoinDuelFromUrl() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const duel = (params.get("duel") || "").trim().toUpperCase();
+      if (!duel) return;
+      // Clean URL
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.delete("duel");
+        window.history.replaceState({}, "", u.pathname + u.search + u.hash);
+      } catch (_) {}
+
+      const join = () => {
+        if (!(els.name.value || "").trim()) {
+          showHomeError("Enter your name, then you'll join the duel automatically.");
+          if (els.name) els.name.focus();
+          const once = () => {
+            if ((els.name.value || "").trim()) {
+              joinDuel(duel);
+            }
+          };
+          els.name.addEventListener("change", once, { once: true });
+          return;
+        }
+        joinDuel(duel);
+      };
+
+      if (socket.connected) join();
+      else {
+        toast("Connecting to join duel " + duel + "…");
+        socket.once("connect", join);
+      }
+    } catch (_) {}
+  }
+
+  function joinDuel(code) {
+    showHomeError("");
+    if (els.matchOverlay) {
+      showMatchOverlay(true);
+      if (els.matchTitle) els.matchTitle.textContent = "Joining duel…";
+      if (els.matchMsg) els.matchMsg.textContent = "Connecting to friend's 1v1 invite…";
+    }
+    state.matchmaking = true;
+    socket.timeout(12000).emit(
+      "match:invite-join",
+      {
+        code: code,
+        name: getName(),
+        lastWpm: state.lastMatchWpm || undefined,
+      },
+      (err, res) => {
+        if (err || !res || !res.ok) {
+          hideMatchOverlay();
+          showHomeError((res && res.error) || "Could not join duel.");
+          toast((res && res.error) || "Duel join failed", true);
+          return;
+        }
+        // match:found will also fire from createQuickMatchRoom
+        if (res.room && (!state.room || state.room.code !== res.room.code)) {
+          // wait for match:found with session
+        }
+        toast("Duel joined — race starting!");
+      }
+    );
   }
 
   function blockPaste(inputEl) {
@@ -2506,8 +2747,24 @@
             if (res && res.ok) {
               toast(
                 res.improved
-                  ? "Daily score posted · " + stats.wpm + " WPM"
+                  ? "Daily score posted · " + stats.wpm + " WPM · streak " + (res.streak || 1)
                   : "Daily board unchanged (best kept)"
+              );
+              if (res.newBadges && res.newBadges.length) {
+                const names = res.newBadges
+                  .map((b) => (b.icon || "") + " " + (b.label || b.id))
+                  .join(", ");
+                setTimeout(() => toast("Badge unlocked: " + names), 500);
+              }
+              renderStreakStrip(
+                {
+                  streak: res.streak,
+                  bestStreak: res.bestStreak,
+                  bestWpm: res.bestWpm,
+                  totalDaily: 1,
+                  badges: res.badges || [],
+                },
+                res.newBadges || []
               );
               loadDailyBoard();
             }
@@ -2628,6 +2885,11 @@
     setMatchFallbackVisible(false);
     stopMatchTimer();
     state.matchmaking = false;
+    state.duelInviteCode = null;
+    if (els.matchInviteUrl) {
+      els.matchInviteUrl.hidden = true;
+      els.matchInviteUrl.textContent = "";
+    }
     if (els.btnMatch) els.btnMatch.disabled = false;
   }
 
@@ -2861,6 +3123,9 @@
   }
   if (els.btnMatchCancel) {
     els.btnMatchCancel.addEventListener("click", () => cancelMatchmaking(false));
+  }
+  if (els.btnMatchInvite) {
+    els.btnMatchInvite.addEventListener("click", () => createDuelInvite());
   }
   if (els.btnMatchKeep) {
     els.btnMatchKeep.addEventListener("click", () => {
@@ -3631,14 +3896,17 @@
   syncVisualViewport();
 
   // Client-side keep-alive while tab is open (helps free Render stay awake)
-  const CLIENT_KEEPALIVE_MS = 8 * 60 * 1000;
+  const CLIENT_KEEPALIVE_MS = 4 * 60 * 1000;
   setInterval(() => {
     if (document.visibilityState === "hidden") return;
-    fetch("/api/health", { cache: "no-store" }).catch(() => {});
+    fetch("/api/ping", { cache: "no-store" }).catch(() => {});
   }, CLIENT_KEEPALIVE_MS);
 
   refreshLiveStatus();
+  refreshStatsStrip();
   loadDailyBoard();
+  loadDailyProfile();
+  tryJoinDuelFromUrl();
 
   // Prefill room from share link even before socket connects
   const urlRoom = getRoomFromUrl();

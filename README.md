@@ -26,10 +26,12 @@ Open **http://localhost:3000**
   - Empty-queue fallback (Practice / Create Room / Share invite)
   - **Rematch** same opponent or **Find new**
 - **Leaderboard** — server + this-device personal best
-- **Daily Challenge** — same passage per day + global board (`GET /api/daily`)
-- **Stats** — `GET /api/stats` (aggregate 1v1 counts / languages, no personal data)
+- **Daily Challenge** — same passage per day + global board, **streaks & badges**
+- **Live stats strip** — 1v1s today · top language · online / queue
+- **Invite while searching** — duel link (`/?duel=CODE`) for guaranteed friend 1v1
+- **Stats** — `GET /api/stats` + `GET /api/ping` for uptime monitors
 - **Fairness** — paste block, 1v1 disconnect forfeit, WPM caps
-- **Deploy-ready** — see [DEPLOY.md](./DEPLOY.md)
+- **Deploy-ready** — see [DEPLOY.md](./DEPLOY.md) (UptimeRobot tips)
 
 ## Deploy (shareable link)
 
