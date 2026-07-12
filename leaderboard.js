@@ -5,6 +5,7 @@ const DATA_DIR = path.join(__dirname, "data");
 const FILE = path.join(DATA_DIR, "leaderboard.json");
 const MAX_ENTRIES = 200;
 const TOP_DEFAULT = 25;
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 function ensureStore() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -71,16 +72,55 @@ function submitScore(payload) {
   return { ok: true, entry };
 }
 
+function bestPerName(entries) {
+  const map = new Map();
+  for (const e of entries) {
+    const k = String(e.name || "").toLowerCase();
+    const prev = map.get(k);
+    if (
+      !prev ||
+      e.wpm > prev.wpm ||
+      (e.wpm === prev.wpm && (e.accuracy || 0) > (prev.accuracy || 0))
+    ) {
+      map.set(k, e);
+    }
+  }
+  return [...map.values()];
+}
+
+/**
+ * @param {number|string} limit
+ * @param {{ mode?: string, language?: string, difficulty?: string, period?: string }} filters
+ * period: "all" | "week" (rolling last 7 days)
+ */
 function getTop(limit, filters = {}) {
   const n = Math.min(100, Math.max(1, Number(limit) || TOP_DEFAULT));
   let entries = readAll();
   if (filters.mode) entries = entries.filter((e) => e.mode === filters.mode);
   if (filters.language) entries = entries.filter((e) => e.language === filters.language);
   if (filters.difficulty) entries = entries.filter((e) => e.difficulty === filters.difficulty);
+
+  const period = String(filters.period || "all").toLowerCase();
+  if (period === "week" || period === "weekly" || period === "7d") {
+    const since = Date.now() - WEEK_MS;
+    entries = entries.filter((e) => (e.at || 0) >= since);
+    // Fresh competition: one best score per racer this week
+    entries = bestPerName(entries);
+  }
+
+  entries.sort((a, b) => b.wpm - a.wpm || b.accuracy - a.accuracy || (b.at || 0) - (a.at || 0));
   return entries.slice(0, n);
+}
+
+function weekWindow() {
+  const end = Date.now();
+  const start = end - WEEK_MS;
+  return { start, end, label: "Last 7 days" };
 }
 
 module.exports = {
   submitScore,
   getTop,
+  weekWindow,
+  WEEK_MS,
 };

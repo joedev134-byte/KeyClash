@@ -237,7 +237,11 @@
     toastRoot: document.getElementById("toast-root"),
     leaderboardList: document.getElementById("leaderboard-list"),
     lbPersonal: document.getElementById("lb-personal"),
+    lbHint: document.getElementById("lb-hint"),
+    lbTabs: document.getElementById("lb-tabs"),
     btnRefreshLb: document.getElementById("btn-refresh-lb"),
+    pwaInstallCard: document.getElementById("pwa-install-card"),
+    btnPwaInstall: document.getElementById("btn-pwa-install"),
     practiceDiffLabel: document.getElementById("practice-diff-label"),
     practiceStatus: document.getElementById("practice-status"),
     practicePassage: document.getElementById("practice-passage"),
@@ -323,6 +327,8 @@
     lastShareText: "",
     duelInviteCode: null,
     badgeMeta: {},
+    lbPeriod: "all", // "all" | "week"
+    deferredPwaPrompt: null,
   };
 
   if (!MODE_META[state.mode]) state.mode = "classic";
@@ -1005,7 +1011,9 @@
 
     if (!entries.length) {
       els.leaderboardList.innerHTML =
-        '<li class="lb-empty">No scores yet — race or practice to post one.</li>';
+        state.lbPeriod === "week"
+          ? '<li class="lb-empty">No scores this week yet — race to claim #1.</li>'
+          : '<li class="lb-empty">No scores yet — race or practice to post one.</li>';
     } else {
       // Force DOM replace so re-render is always visible
       els.leaderboardList.innerHTML = "";
@@ -1035,6 +1043,19 @@
       els.lbPersonal.textContent = pb
         ? `Your best (this device): ${pb.wpm} WPM · ${pb.accuracy}% · ${modeLabel(pb.mode)}`
         : "Your best (this device): —";
+    }
+    if (els.lbHint) {
+      els.lbHint.textContent =
+        state.lbPeriod === "week"
+          ? "This week · best WPM per racer (last 7 days) · fresh competition"
+          : "All time · top WPM on this server · also saved on your device";
+    }
+    if (els.lbTabs) {
+      els.lbTabs.querySelectorAll(".lb-tab").forEach((btn) => {
+        const on = btn.dataset.period === state.lbPeriod;
+        btn.classList.toggle("active", on);
+        btn.setAttribute("aria-selected", on ? "true" : "false");
+      });
     }
   }
 
@@ -1081,12 +1102,19 @@
     if (!els.leaderboardList) return;
     const options = opts || {};
     let serverEntries = [];
+    const period = options.period || state.lbPeriod || "all";
 
     try {
-      const res = await fetch("/api/leaderboard?limit=15&_=" + Date.now(), {
-        cache: "no-store",
-        headers: { "Cache-Control": "no-cache" },
-      });
+      const res = await fetch(
+        "/api/leaderboard?limit=15&period=" +
+          encodeURIComponent(period) +
+          "&_=" +
+          Date.now(),
+        {
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache" },
+        }
+      );
       if (res.ok) {
         const data = await res.json();
         serverEntries = data.entries || [];
@@ -1096,8 +1124,23 @@
     }
 
     let local = readLocalScores();
+    if (period === "week") {
+      const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      local = local.filter((e) => (e.at || 0) >= since);
+      // best per name this week (match server)
+      const map = new Map();
+      local.forEach((e) => {
+        const k = String(e.name || "").toLowerCase();
+        const prev = map.get(k);
+        if (!prev || e.wpm > prev.wpm) map.set(k, e);
+      });
+      local = [...map.values()];
+    }
     if (options.optimistic) {
-      local = [options.optimistic, ...local.filter((e) => e.at !== options.optimistic.at)];
+      const opt = options.optimistic;
+      if (period !== "week" || (opt.at || 0) >= Date.now() - 7 * 24 * 60 * 60 * 1000) {
+        local = [opt, ...local.filter((e) => e.at !== opt.at)];
+      }
     }
 
     const entries = mergeLeaderboardEntries(serverEntries, local);
@@ -1127,20 +1170,45 @@
   if (els.btnRefreshLb) {
     els.btnRefreshLb.addEventListener("click", () => {
       loadLeaderboard();
-      toast("Leaderboard refreshed");
+      toast(
+        state.lbPeriod === "week"
+          ? "Weekly leaderboard refreshed"
+          : "Leaderboard refreshed"
+      );
+    });
+  }
+
+  if (els.lbTabs) {
+    els.lbTabs.addEventListener("click", (e) => {
+      const btn = e.target.closest(".lb-tab");
+      if (!btn) return;
+      const period = btn.dataset.period === "week" ? "week" : "all";
+      if (period === state.lbPeriod) return;
+      state.lbPeriod = period;
+      loadLeaderboard({ period });
     });
   }
 
   socket.on("leaderboard:update", (payload) => {
-    if (payload && Array.isArray(payload.top) && payload.top.length) {
-      const merged = mergeLeaderboardEntries(payload.top, readLocalScores());
-      renderLeaderboardEntries(
-        merged,
-        payload.entry && payload.entry.id
-      );
+    if (!payload) return;
+    // Prefer list matching current tab
+    const list =
+      state.lbPeriod === "week" && Array.isArray(payload.topWeek)
+        ? payload.topWeek
+        : Array.isArray(payload.top)
+          ? payload.top
+          : null;
+    if (list && list.length) {
+      let local = readLocalScores();
+      if (state.lbPeriod === "week") {
+        const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        local = local.filter((e) => (e.at || 0) >= since);
+      }
+      const merged = mergeLeaderboardEntries(list, local);
+      renderLeaderboardEntries(merged, payload.entry && payload.entry.id);
     } else {
       loadLeaderboard({
-        highlightId: payload && payload.entry && payload.entry.id,
+        highlightId: payload.entry && payload.entry.id,
       });
     }
   });
@@ -4010,13 +4078,32 @@
     toast(`${(player && player.name) || "Player"} joined`);
   });
 
-  socket.on("player:left", ({ id, name, reason }) => {
+  socket.on("player:left", ({ id, name, reason, quickMatch, roomStatus }) => {
     if (state.room && id) {
       state.room.players = state.room.players.filter((p) => p.id !== id);
       renderPlayers();
       renderTracks();
     }
-    toast(reason === "timeout" ? `${name || "Player"} timed out` : `${name || "A player"} left`);
+    const who = name || "Opponent";
+    const is1v1 = quickMatch || (state.room && state.room.quickMatch);
+    if (is1v1) {
+      if (reason === "forfeit") {
+        toast(who + " left the 1v1 (forfeit) — you win or Find new opponent");
+      } else if (reason === "timeout") {
+        toast(who + " timed out of the 1v1 — Find new opponent or leave");
+      } else {
+        toast(who + " left the 1v1 — Rematch unavailable · Find new opponent");
+      }
+      if (els.btnFindNew && state.room && state.room.status === "results") {
+        els.btnFindNew.hidden = false;
+      }
+      return;
+    }
+    toast(
+      reason === "timeout"
+        ? `${who} timed out`
+        : `${who} left`
+    );
   });
 
   socket.on("player:disconnected", ({ id, name }) => {
@@ -4024,6 +4111,13 @@
       const p = state.room.players.find((x) => x.id === id);
       if (p) p.connected = false;
       renderPlayers();
+    }
+    if (state.room && state.room.quickMatch) {
+      toast(
+        (name || "Opponent") +
+          " disconnected from 1v1 — if mid-race they forfeit; otherwise they may rejoin"
+      );
+      return;
     }
     toast(`${name || "Player"} disconnected — can rejoin soon`);
   });
@@ -4276,4 +4370,71 @@
   if (homeAd) {
     homeAd.hidden = state.modeScreen !== "home";
   }
+
+  // ---- PWA: service worker + install prompt ----
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    });
+  }
+
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    state.deferredPwaPrompt = e;
+    if (els.pwaInstallCard) els.pwaInstallCard.hidden = false;
+  });
+
+  window.addEventListener("appinstalled", () => {
+    state.deferredPwaPrompt = null;
+    if (els.pwaInstallCard) els.pwaInstallCard.hidden = true;
+    toast("KeyClash installed — open from your home screen");
+  });
+
+  if (els.btnPwaInstall) {
+    els.btnPwaInstall.addEventListener("click", async () => {
+      if (state.deferredPwaPrompt) {
+        state.deferredPwaPrompt.prompt();
+        try {
+          const choice = await state.deferredPwaPrompt.userChoice;
+          if (choice && choice.outcome === "accepted") {
+            toast("Installing…");
+          }
+        } catch (_) {}
+        state.deferredPwaPrompt = null;
+        if (els.pwaInstallCard) els.pwaInstallCard.hidden = true;
+        return;
+      }
+      // iOS / browsers without beforeinstallprompt
+      const isIOS =
+        /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      if (isIOS) {
+        toast("On iPhone: Share → Add to Home Screen");
+      } else {
+        toast("Use browser menu → Install app / Add to Home Screen");
+      }
+    });
+  }
+
+  // Show install tip card on mobile even without deferred prompt
+  try {
+    const standalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.navigator.standalone === true;
+    if (
+      !standalone &&
+      els.pwaInstallCard &&
+      /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
+    ) {
+      // Keep hidden until beforeinstallprompt, except show soft tip after delay on iOS
+      if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+        setTimeout(() => {
+          if (!state.deferredPwaPrompt && els.pwaInstallCard && state.modeScreen === "home") {
+            els.pwaInstallCard.hidden = false;
+            if (els.btnPwaInstall) els.btnPwaInstall.textContent = "How to install";
+          }
+        }, 4000);
+      }
+    }
+  } catch (_) {}
 })();

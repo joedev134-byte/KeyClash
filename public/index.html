@@ -21,7 +21,12 @@
     <meta name="twitter:description" content="Type facts. Race friends. 1v1 online, daily challenge. No login required." />
     <meta name="twitter:image" content="__OG_IMAGE__" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="KeyClash" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -249,6 +254,39 @@
             </ol>
           </details>
 
+          <details class="faq-block" id="faq-accordion">
+            <summary class="faq-summary">
+              <span class="faq-title">FAQ</span>
+              <span class="how-to-chevron" aria-hidden="true">▸</span>
+            </summary>
+            <div class="faq-list">
+              <details class="faq-item">
+                <summary>Paano mag-1v1?</summary>
+                <p>Tap <strong>Find 1v1 Opponent</strong>. Kung walang tao, use <strong>Invite friend to duel</strong> and share the link.</p>
+              </details>
+              <details class="faq-item">
+                <summary>Bakit matagal mag-load minsan?</summary>
+                <p>Free hosting may sleep after idle. First open can take 30–60s — wait; don’t close the tab.</p>
+              </details>
+              <details class="faq-item">
+                <summary>Ano ang Daily Challenge?</summary>
+                <p>Same passage for everyone today (by language). Post a score for the daily board and earn streaks/badges.</p>
+              </details>
+              <details class="faq-item">
+                <summary>Paano i-install sa phone?</summary>
+                <p>Use <strong>Install app</strong> (if shown) or browser menu → <em>Add to Home Screen</em> for an app-like icon.</p>
+              </details>
+              <details class="faq-item">
+                <summary>All Time vs This Week leaderboard?</summary>
+                <p><strong>This Week</strong> = best scores in the last 7 days (fresh race). <strong>All Time</strong> = overall top on this server.</p>
+              </details>
+              <details class="faq-item">
+                <summary>Pwede ba mag-paste?</summary>
+                <p>No — paste is blocked for fairness. Type it out. 1v1 disconnect mid-race counts as forfeit.</p>
+              </details>
+            </div>
+          </details>
+
           <label class="field">
             <span>Your name</span>
             <input id="input-name" type="text" maxlength="16" placeholder="Enter racer name" autocomplete="nickname" />
@@ -413,12 +451,24 @@
             <h2>Leaderboard</h2>
             <button id="btn-refresh-lb" class="btn btn-ghost btn-xs" type="button">Refresh</button>
           </div>
-          <p class="field-hint lb-hint">Top WPM on this server · also saved on your device</p>
+          <div class="lb-tabs" id="lb-tabs" role="tablist" aria-label="Leaderboard period">
+            <button type="button" class="lb-tab active" data-period="all" role="tab" aria-selected="true">All Time</button>
+            <button type="button" class="lb-tab" data-period="week" role="tab" aria-selected="false">This Week</button>
+          </div>
+          <p class="field-hint lb-hint" id="lb-hint">Top WPM on this server · also saved on your device</p>
           <ol id="leaderboard-list" class="leaderboard-list">
             <li class="lb-empty">No scores yet — race or practice to post one.</li>
           </ol>
           <div class="lb-personal" id="lb-personal"></div>
         </aside>
+
+        <div class="pwa-install-card glass" id="pwa-install-card" hidden>
+          <div class="pwa-install-text">
+            <strong>Install KeyClash</strong>
+            <p class="field-hint">Add to Home Screen for faster access — works like an app.</p>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-pwa-install">Install app</button>
+        </div>
 
         <footer class="home-foot">Press keys. Break records. Clash again.</footer>
       </div>

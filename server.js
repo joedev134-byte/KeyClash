@@ -221,12 +221,20 @@ app.get("/api/practice", (req, res) => {
 app.get("/api/leaderboard", (req, res) => {
   res.set("Cache-Control", "no-store, no-cache, must-revalidate");
   res.set("Pragma", "no-cache");
+  const period = String(req.query.period || "all").toLowerCase();
   const top = leaderboard.getTop(req.query.limit, {
     mode: req.query.mode || undefined,
     language: req.query.language || undefined,
     difficulty: req.query.difficulty || undefined,
+    period,
   });
-  res.json({ entries: top, updatedAt: Date.now() });
+  const week = leaderboard.weekWindow ? leaderboard.weekWindow() : null;
+  res.json({
+    entries: top,
+    period: period === "week" || period === "weekly" || period === "7d" ? "week" : "all",
+    week,
+    updatedAt: Date.now(),
+  });
 });
 
 app.post("/api/leaderboard", (req, res) => {
@@ -238,7 +246,8 @@ app.post("/api/leaderboard", (req, res) => {
   // Notify all connected clients so home leaderboard re-renders live
   io.emit("leaderboard:update", {
     entry: result.entry,
-    top: leaderboard.getTop(15),
+    top: leaderboard.getTop(15, { period: "all" }),
+    topWeek: leaderboard.getTop(15, { period: "week" }),
   });
   res.json(result);
 });
@@ -941,6 +950,8 @@ function removePlayerFromRoom(room, playerId, reason) {
     hostId: room.hostId,
     reason: reason || "left",
     name: player.name,
+    quickMatch: !!room.quickMatch,
+    roomStatus: room.status,
   });
   emitRoom(room);
   if (room.status === "racing") maybeEndRace(room);

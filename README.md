@@ -25,7 +25,10 @@ Open **http://localhost:3000**
 - **Find 1v1 Opponent** — online random matchmaking (real player, not ghost)
   - Empty-queue fallback (Practice / Create Room / Share invite)
   - **Rematch** same opponent or **Find new**
-- **Leaderboard** — server + this-device personal best
+- **Leaderboard** — All Time + **This Week** tabs (fresh 7-day race)
+- **PWA** — Add to Home Screen (`manifest` + service worker)
+- **FAQ** on home — common “paano?” answers
+- **1v1 leave toasts** — clear message when opponent leaves
 - **Daily Challenge** — same passage per day + global board, **streaks & badges**
 - **Live stats strip** — 1v1s today · top language · online / queue
 - **Invite while searching** — duel link (`/?duel=CODE`) for guaranteed friend 1v1
