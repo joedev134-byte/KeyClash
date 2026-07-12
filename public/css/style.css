@@ -1505,6 +1505,84 @@ input[type="text"]:focus {
   width: 100%;
 }
 
+/* Home ad slot — below CTAs, never overlays game UI */
+.ad-slot {
+  width: min(440px, 100%);
+  margin: 0 auto;
+  border-radius: 14px;
+  padding: 10px 12px 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  background: rgba(12, 14, 28, 0.55);
+}
+
+.ad-slot[hidden] {
+  display: none !important;
+}
+
+.ad-slot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.ad-label {
+  font-size: 0.65rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.ad-slot-frame {
+  min-height: 90px;
+  max-height: 120px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* Real ad network units should stay inside this box */
+.ad-slot-frame ins,
+.ad-slot-frame iframe,
+.ad-slot-frame > * {
+  max-width: 100%;
+  max-height: 120px;
+}
+
+.ad-placeholder {
+  display: grid;
+  gap: 4px;
+  text-align: center;
+  padding: 16px 12px;
+  color: var(--muted);
+}
+
+.ad-placeholder-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: rgba(232, 236, 255, 0.55);
+}
+
+.ad-placeholder-sub {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+@media (max-width: 520px) {
+  .ad-slot {
+    width: 100%;
+  }
+  .ad-slot-frame {
+    min-height: 80px;
+    max-height: 100px;
+  }
+}
+
 /* Connecting / cold start */
 .connecting-overlay {
   position: fixed;

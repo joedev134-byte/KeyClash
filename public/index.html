@@ -173,6 +173,31 @@
           </div>
         </div>
 
+        <!-- Non-intrusive home ad slot (below main actions, never covers Create/Join) -->
+        <aside
+          id="home-ad-slot"
+          class="ad-slot glass"
+          aria-label="Advertisement"
+          data-ad-slot="home-banner"
+        >
+          <div class="ad-slot-head">
+            <span class="ad-label">Ad</span>
+            <button type="button" id="btn-hide-ad" class="btn btn-ghost btn-xs" title="Hide this ad for now">
+              Hide
+            </button>
+          </div>
+          <div id="home-ad-frame" class="ad-slot-frame">
+            <!--
+              Plug AdSense (or any network) here later, e.g.:
+              <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-XXXX" data-ad-slot="YYYY" ...></ins>
+            -->
+            <div class="ad-placeholder">
+              <span class="ad-placeholder-title">Your ad could be here</span>
+              <span class="ad-placeholder-sub">320×100 · non-intrusive home banner</span>
+            </div>
+          </div>
+        </aside>
+
         <aside class="leaderboard-card glass">
           <div class="panel-head">
             <h2>Leaderboard</h2>
