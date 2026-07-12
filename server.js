@@ -9,10 +9,13 @@ const {
   normalizeLanguage,
   normalizeMode,
   normalizeParagraphs,
+  normalizeCategory,
   listDifficulties,
   listLanguages,
   listModes,
+  listCategories,
   LANG_LABELS,
+  CATEGORIES,
   MODES,
   MIN_PARAGRAPHS,
   MAX_PARAGRAPHS,
@@ -56,17 +59,24 @@ app.get("/api/modes", (_req, res) => {
   res.json({ modes: listModes() });
 });
 
+app.get("/api/categories", (_req, res) => {
+  res.json({ categories: listCategories() });
+});
+
 app.get("/api/practice", (req, res) => {
   const difficulty = normalizeDifficulty(req.query.difficulty);
   const language = normalizeLanguage(req.query.language);
   const mode = normalizeMode(req.query.mode || "classic");
   const paragraphs = normalizeParagraphs(req.query.paragraphs);
-  const passage = pickRaceText(mode, difficulty, language, paragraphs);
+  const category = normalizeCategory(req.query.category);
+  const passage = pickRaceText(mode, difficulty, language, paragraphs, category);
   res.json({
     difficulty,
     language,
     languageLabel: LANG_LABELS[language] || language,
     mode,
+    category,
+    categoryLabel: (CATEGORIES[category] && CATEGORIES[category].label) || category,
     paragraphs,
     passage,
     length: passage.length,
@@ -223,6 +233,10 @@ function roomSnapshot(room) {
     language: room.language,
     languageLabel: LANG_LABELS[room.language] || room.language,
     paragraphs: room.paragraphs,
+    category: room.category || "all",
+    categoryLabel:
+      (CATEGORIES[room.category || "all"] && CATEGORIES[room.category || "all"].label) ||
+      "All Facts",
     minParagraphs: MIN_PARAGRAPHS,
     maxParagraphs: MAX_PARAGRAPHS,
     mode: room.mode,
@@ -513,7 +527,8 @@ function startCountdown(room) {
     room.mode,
     room.difficulty,
     room.language,
-    room.paragraphs
+    room.paragraphs,
+    room.category
   );
   room.raceDurationMs = raceDurationForMode(room.mode);
   room.status = "countdown";
@@ -656,7 +671,7 @@ function assertHostLobby(room, socket, cb) {
 io.on("connection", (socket) => {
   socket.data.roomCode = null;
 
-  socket.on("room:create", ({ name, difficulty, language, mode, paragraphs }, cb) => {
+  socket.on("room:create", ({ name, difficulty, language, mode, paragraphs, category }, cb) => {
     try {
       const code = generateCode();
       const modeNorm = normalizeMode(mode);
@@ -676,6 +691,7 @@ io.on("connection", (socket) => {
         language: normalizeLanguage(language),
         mode: modeNorm,
         paragraphs: normalizeParagraphs(paragraphs),
+        category: normalizeCategory(category),
         passage: "",
         raceStart: null,
         raceDurationMs: RACE_TIMEOUT_MS,
@@ -902,6 +918,20 @@ io.on("connection", (socket) => {
         ok: true,
         language: room.language,
         languageLabel: LANG_LABELS[room.language],
+      });
+    }
+  });
+
+  socket.on("room:set-category", ({ category }, cb) => {
+    const room = rooms.get(socket.data.roomCode);
+    if (!assertHostLobby(room, socket, cb)) return;
+    room.category = normalizeCategory(category);
+    emitRoom(room);
+    if (typeof cb === "function") {
+      cb({
+        ok: true,
+        category: room.category,
+        categoryLabel: CATEGORIES[room.category].label,
       });
     }
   });
@@ -1209,4 +1239,18 @@ io.on("connection", (socket) => {
 
 server.listen(PORT, () => {
   console.log(`\n  ⚡ KeyClash running at http://localhost:${PORT}\n`);
+
+  // Self keep-alive on Render (reduces free-tier sleep). RENDER_EXTERNAL_URL is set by Render.
+  const external =
+    process.env.RENDER_EXTERNAL_URL ||
+    process.env.KEEP_ALIVE_URL ||
+    "";
+  if (external) {
+    const url = external.replace(/\/$/, "") + "/api/health";
+    const mins = Math.max(5, Number(process.env.KEEP_ALIVE_MINUTES) || 10);
+    setInterval(() => {
+      fetch(url).catch(() => {});
+    }, mins * 60 * 1000);
+    console.log(`  ⏰ Keep-alive every ${mins}m → ${url}\n`);
+  }
 });

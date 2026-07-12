@@ -118,6 +118,183 @@ const LANG_LABELS = {
   tl: "Tagalog",
 };
 
+/** Fact topic packs (separate from difficulty tiers). */
+const CATEGORIES = {
+  all: { id: "all", label: "All Facts", short: "All" },
+  science: { id: "science", label: "Science", short: "Sci" },
+  space: { id: "space", label: "Space", short: "Space" },
+  animals: { id: "animals", label: "Animals", short: "Animals" },
+  ph: { id: "ph", label: "Philippines", short: "PH" },
+};
+
+const CATEGORY_IDS = Object.keys(CATEGORIES);
+
+/**
+ * Category-specific facts by language + difficulty.
+ * "all" uses the main PASSAGES pool.
+ */
+const CATEGORY_PASSAGES = {
+  en: {
+    science: {
+      easy: [
+        "Water freezes at zero degrees Celsius.",
+        "Honey does not spoil if it is stored well.",
+        "The human body is about sixty percent water.",
+        "Adult humans have thirty-two teeth, including wisdom teeth.",
+        "Diamond is made of carbon atoms in a strong crystal lattice.",
+      ],
+      normal: [
+        "Your brain uses about twenty percent of your body's energy even though it is only a small part of your total body weight.",
+        "Sound travels faster through water than through air because water molecules are packed more closely together.",
+        "Lightning is hotter than the surface of the Sun for a brief moment when it flashes through the atmosphere.",
+        "Bees can see ultraviolet light, which helps them find patterns on flowers that human eyes cannot see.",
+        "DNA stores genetic instructions; humans share a large percentage of genes with many other living species.",
+      ],
+      hard: [
+        "Photosynthesis converts carbon dioxide and water into sugars and oxygen using energy from sunlight, powering most food chains on Earth.",
+        "Plate tectonics explains how Earth's crust moves in large plates, causing earthquakes, volcanoes, and the slow drift of continents.",
+        "The greenhouse effect is a natural process, but extra carbon dioxide and methane from human activity strengthen warming of the climate.",
+        "The human heart beats about one hundred thousand times per day on average, pumping blood through roughly one hundred thousand kilometers of vessels.",
+      ],
+    },
+    space: {
+      easy: [
+        "The Earth is the third planet from the Sun.",
+        "The Moon is Earth's only natural satellite.",
+        "Light from the Sun takes about eight minutes to reach us.",
+        "A day on Earth lasts about twenty-four hours.",
+      ],
+      normal: [
+        "Venus is the hottest planet in our solar system even though Mercury is closer to the Sun, because a thick atmosphere traps heat.",
+        "A year on Mars is about six hundred eighty-seven Earth days long because Mars orbits farther from the Sun.",
+        "The speed of light in a vacuum is about three hundred thousand kilometers per second.",
+        "The International Space Station orbits Earth about every ninety minutes at a speed of roughly twenty-eight thousand kilometers per hour.",
+        "Earth's magnetic field helps protect the planet from charged particles coming from the solar wind.",
+      ],
+      hard: [
+        "Jupiter has more than ninety known moons, and its largest moon, Ganymede, is bigger than the planet Mercury.",
+        "Saturn's rings are made mostly of ice particles mixed with rock and dust, ranging from tiny grains to large chunks.",
+        "A black hole is a region of spacetime where gravity is so strong that nothing, not even light, can escape from beyond its event horizon.",
+        "Neutron stars are extremely dense remnants of massive stars; a teaspoon of their material would weigh billions of tons on Earth.",
+      ],
+    },
+    animals: {
+      easy: [
+        "Octopuses have three hearts and blue blood.",
+        "A group of flamingos is called a flamboyance.",
+        "Sharks existed before trees first appeared on land.",
+        "Bananas are berries, but strawberries are not.",
+      ],
+      normal: [
+        "Blue whales are the largest animals known to have ever lived on Earth, bigger than most dinosaurs.",
+        "Koalas sleep for many hours each day because their diet of eucalyptus leaves is low in energy.",
+        "The Great Barrier Reef is the largest living structure on Earth and can be seen from space under good conditions.",
+        "There are more trees on Earth than stars in the Milky Way galaxy, based on current scientific estimates of both numbers.",
+      ],
+      hard: [
+        "Coral reefs support roughly twenty-five percent of marine species even though they cover less than one percent of the ocean floor.",
+        "The Mariana Trench in the Pacific Ocean is the deepest known part of the ocean, reaching depths of nearly eleven kilometers.",
+        "The Amazon River carries more water than any other river on Earth and supports enormous biodiversity.",
+      ],
+    },
+    ph: {
+      easy: [
+        "The Philippines is an archipelago in Southeast Asia.",
+        "The Philippines has more than seven thousand islands.",
+        "Mayon Volcano is known for its nearly perfect cone shape.",
+        "Rice is a staple food in many parts of the Philippines.",
+      ],
+      normal: [
+        "Taal Volcano is one of the most active volcanoes in the Philippines and is located in Batangas.",
+        "Tubbataha Reef in Palawan is a UNESCO World Heritage Site rich in marine life.",
+        "Filipino is based on Tagalog and is one of the official languages of the Philippines along with English.",
+        "The Philippines sits on the Pacific Ring of Fire, which explains its many volcanoes and earthquakes.",
+      ],
+      hard: [
+        "The Philippine Deep is one of the deepest oceanic trenches in the world and is found east of the archipelago.",
+        "Manila was a major trading hub for centuries, connecting Asian and European commerce through galleon trade routes.",
+        "The Philippines has some of the highest marine biodiversity on Earth, especially in the Coral Triangle region.",
+      ],
+    },
+  },
+  tl: {
+    science: {
+      easy: [
+        "Nagyeyelo ang tubig sa zero degrees Celsius.",
+        "Halos animnapung porsyento ng katawan ng tao ay tubig.",
+        "May tatlumpu't dalawang ngipin ang karaniwang adultong tao.",
+        "Hindi madaling masira ang pulot-pukyutan kung maayos ang pagtatago.",
+      ],
+      normal: [
+        "Gumagamit ang utak ng tao ng humigit-kumulang dalawampung porsyento ng enerhiya ng katawan kahit maliit lang ang bahagi nito sa bigat.",
+        "Mas mabilis maglakbay ang tunog sa tubig kaysa sa hangin dahil mas magkakalapit ang mga molekula ng tubig.",
+        "Mas mainit pansamantala ang kidlat kaysa sa ibabaw ng Araw sa sandaling dumaan ito sa atmospera.",
+        "Ang diamante ay gawa sa carbon at kabilang sa pinakamatitigas na natural na materyales.",
+      ],
+      hard: [
+        "Sa photosynthesis, ginagamit ng halaman ang sikat ng araw upang gawing asukal at oxygen ang carbon dioxide at tubig.",
+        "Ipinapaliwanag ng plate tectonics kung paano gumagalaw ang crust ng Daigdig, na nagdudulot ng lindol, bulkan, at pag-anod ng mga kontinente.",
+        "Likas ang greenhouse effect, ngunit pinalalakas ito ng dagdag na carbon dioxide at methane mula sa gawain ng tao.",
+        "Ang DNA ay double helix molecule na nag-iimbak ng genetic instructions para sa paglaki at paggana ng mga organismo.",
+      ],
+    },
+    space: {
+      easy: [
+        "Ang Daigdig ang ikatlong planeta mula sa Araw.",
+        "Ang Buwan ang tanging natural na satellite ng Daigdig.",
+        "Humigit-kumulang walong minuto bago makarating sa atin ang liwanag ng Araw.",
+        "May dalawampu't apat na oras ang isang araw sa Daigdig.",
+      ],
+      normal: [
+        "Ang Venus ang pinakamainit na planeta sa solar system kahit mas malapit ang Mercury sa Araw, dahil sa makapal nitong atmosphere.",
+        "Humigit-kumulang anim na raan walumpu't pitong araw ng Daigdig ang isang taon sa Mars.",
+        "Ang bilis ng liwanag sa vacuum ay humigit-kumulang tatlong daang libong kilometro bawat segundo.",
+        "Ang International Space Station ay umiikot sa Daigdig nang humigit-kumulang bawat siyamnapung minuto.",
+      ],
+      hard: [
+        "May mahigit siyamnapung kilalang buwan ang Jupiter, at mas malaki pa ang pinakamalaki nitong buwan na Ganymede kaysa sa planetang Mercury.",
+        "Halos yelo, bato, at alikabok ang bumubuo sa mga singsing ng Saturn.",
+        "Ang black hole ay rehiyon sa spacetime kung saan napakalakas ng gravity kaya wala, maging liwanag man, ang makakatakas.",
+        "Lubhang siksik ang neutron star; ang isang kutsarita ng materyal nito ay magpapabigat ng bilyun-bilyong tonelada sa Daigdig.",
+      ],
+    },
+    animals: {
+      easy: [
+        "May tatlong puso at asul na dugo ang pugita.",
+        "Ang blue whale ang pinakamalaking hayop na naitala sa kasaysayan ng Daigdig.",
+      ],
+      normal: [
+        "Nakakakita ang bubuyog ng ultraviolet light na tumutulong sa kanila na makita ang pattern sa bulaklak.",
+        "Ang Great Barrier Reef ang pinakamalaking living structure sa Daigdig at makikita minsan mula sa kalawakan.",
+        "Tinutulungan ng magnetic field ng Daigdig na protektahan tayo mula sa charged particles mula sa araw.",
+      ],
+      hard: [
+        "Sinusuportahan ng coral reefs ang humigit-kumulang dalawampu't limang porsyento ng marine species kahit maliit lang ang bahagi nila sa karagatan.",
+        "Ang Mariana Trench sa Pasipiko ang pinakamalalim na bahagi ng karagatan, na umaabot ng halos labing-isang kilometro.",
+      ],
+    },
+    ph: {
+      easy: [
+        "Ang Pilipinas ay isang kapuluan sa Timog-Silangang Asya.",
+        "May mahigit pitong libong isla ang Pilipinas.",
+        "Ang Mayon ay kilala sa halos perpektong hugis-konong bulkan.",
+        "Ang palay ang pangunahing pagkain sa maraming bahagi ng Pilipinas.",
+      ],
+      normal: [
+        "Ang Taal Volcano ay isa sa mga pinakaaktibong bulkan sa Pilipinas at matatagpuan sa Batangas.",
+        "Ang Tubbataha Reef sa Palawan ay isang UNESCO World Heritage Site na mayaman sa marine life.",
+        "Ang wikang Filipino ay batay sa Tagalog at isa sa mga opisyal na wika ng Pilipinas kasama ang Ingles.",
+        "Nasa Pacific Ring of Fire ang Pilipinas, kaya marami itong bulkan at lindol.",
+      ],
+      hard: [
+        "Ang Philippine Deep ay kabilang sa pinakamalalim na trench sa mundo at matatagpuan sa silangan ng kapuluan.",
+        "Ang Pilipinas ay bahagi ng Coral Triangle, isa sa mga sentro ng pinakamataas na marine biodiversity sa daigdig.",
+        "Sa loob ng maraming siglo, naging mahalagang sentro ng kalakalan ang Maynila sa galleon trade sa pagitan ng Asya at Europa.",
+      ],
+    },
+  },
+};
+
 const MODES = {
   classic: {
     id: "classic",
@@ -253,18 +430,41 @@ function normalizeParagraphs(value) {
   return Math.min(MAX_PARAGRAPHS, Math.max(MIN_PARAGRAPHS, n));
 }
 
-function pickPassage(difficulty, language) {
-  return pickPassages(difficulty, language, 1);
+function normalizeCategory(value) {
+  const c = String(value || "all").toLowerCase();
+  if (c === "sci" || c === "general") return "science";
+  if (c === "phil" || c === "philippines" || c === "pinoy") return "ph";
+  if (c === "animal") return "animals";
+  return CATEGORY_IDS.includes(c) ? c : "all";
+}
+
+function getPassagePool(difficulty, language, category) {
+  const d = normalizeDifficulty(difficulty);
+  const lang = normalizeLanguage(language);
+  const cat = normalizeCategory(category);
+  if (cat === "all") {
+    return PASSAGES[lang][d];
+  }
+  const pack = CATEGORY_PASSAGES[lang] && CATEGORY_PASSAGES[lang][cat];
+  if (pack && pack[d] && pack[d].length) return pack[d];
+  // fallback: any difficulty in that category, then all facts
+  if (pack) {
+    const merged = [...(pack.easy || []), ...(pack.normal || []), ...(pack.hard || [])];
+    if (merged.length) return merged;
+  }
+  return PASSAGES[lang][d];
+}
+
+function pickPassage(difficulty, language, category) {
+  return pickPassages(difficulty, language, 1, category);
 }
 
 /**
  * Pick N random paragraphs (unique when pool allows) and join for one race text.
  */
-function pickPassages(difficulty, language, paragraphCount) {
-  const d = normalizeDifficulty(difficulty);
-  const lang = normalizeLanguage(language);
+function pickPassages(difficulty, language, paragraphCount, category) {
   const count = normalizeParagraphs(paragraphCount);
-  const pool = PASSAGES[lang][d];
+  const pool = getPassagePool(difficulty, language, category);
   const parts = [];
   const used = new Set();
 
@@ -290,12 +490,10 @@ function pickPassages(difficulty, language, paragraphCount) {
  * Timed mode: use selected paragraph count, but ensure enough text for 60s.
  * Minimum ~480 chars by adding extra paragraphs if needed.
  */
-function pickTimedPassage(difficulty, language, paragraphCount) {
+function pickTimedPassage(difficulty, language, paragraphCount, category) {
   const count = normalizeParagraphs(paragraphCount);
-  let text = pickPassages(difficulty, language, count);
-  const d = normalizeDifficulty(difficulty);
-  const lang = normalizeLanguage(language);
-  const pool = PASSAGES[lang][d];
+  let text = pickPassages(difficulty, language, count, category);
+  const pool = getPassagePool(difficulty, language, category);
   const parts = [text];
   while (parts.join(" ").length < 480) {
     parts.push(randomFrom(pool));
@@ -320,12 +518,19 @@ function pickWords(difficulty, language, paragraphCount) {
 }
 
 /** Unified race text picker for all modes. */
-function pickRaceText(mode, difficulty, language, paragraphCount) {
+function pickRaceText(mode, difficulty, language, paragraphCount, category) {
   const m = normalizeMode(mode);
   if (m === "words") return pickWords(difficulty, language, paragraphCount);
-  if (m === "timed") return pickTimedPassage(difficulty, language, paragraphCount);
-  // classic, best_of_3, sudden_death, ghost, team → fact paragraphs
-  return pickPassages(difficulty, language, paragraphCount);
+  if (m === "timed") return pickTimedPassage(difficulty, language, paragraphCount, category);
+  return pickPassages(difficulty, language, paragraphCount, category);
+}
+
+function listCategories() {
+  return CATEGORY_IDS.map((id) => ({
+    id,
+    label: CATEGORIES[id].label,
+    short: CATEGORIES[id].short,
+  }));
 }
 
 function listDifficulties() {
@@ -348,10 +553,13 @@ function listModes() {
 
 module.exports = {
   PASSAGES,
+  CATEGORY_PASSAGES,
   WORDS,
   LANGUAGES,
   DIFFICULTIES,
   LANG_LABELS,
+  CATEGORIES,
+  CATEGORY_IDS,
   MODES,
   MIN_PARAGRAPHS,
   MAX_PARAGRAPHS,
@@ -359,6 +567,7 @@ module.exports = {
   normalizeDifficulty,
   normalizeMode,
   normalizeParagraphs,
+  normalizeCategory,
   normalizeTypingText,
   pickPassage,
   pickPassages,
@@ -368,4 +577,5 @@ module.exports = {
   listDifficulties,
   listLanguages,
   listModes,
+  listCategories,
 };

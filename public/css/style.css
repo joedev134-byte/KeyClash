@@ -1482,6 +1482,137 @@ input[type="text"]:focus {
   width: 100%;
 }
 
+/* Connecting / cold start */
+.connecting-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 6, 14, 0.82);
+  backdrop-filter: blur(8px);
+  padding: 20px;
+}
+
+.connecting-overlay[hidden] {
+  display: none !important;
+}
+
+.connecting-card {
+  width: min(400px, 100%);
+  border-radius: 18px;
+  padding: 28px 24px;
+  text-align: center;
+}
+
+.connecting-card h2 {
+  margin: 14px 0 8px;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  letter-spacing: 0.06em;
+}
+
+.connecting-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.connecting-sub {
+  margin-top: 12px !important;
+  font-family: var(--font-mono);
+  color: var(--cyan) !important;
+}
+
+.connecting-spinner {
+  width: 42px;
+  height: 42px;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: 3px solid rgba(0, 245, 212, 0.15);
+  border-top-color: var(--cyan);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Share modal + QR */
+.share-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 6, 14, 0.75);
+  backdrop-filter: blur(6px);
+  padding: 16px;
+}
+
+.share-modal[hidden] {
+  display: none !important;
+}
+
+.share-modal-card {
+  position: relative;
+  width: min(380px, 100%);
+  border-radius: 18px;
+  padding: 22px 18px 18px;
+  text-align: center;
+}
+
+.share-modal-card h2 {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+}
+
+.share-modal-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+.share-qr {
+  display: block;
+  width: 180px;
+  height: 180px;
+  margin: 14px auto;
+  border-radius: 12px;
+  background: #fff;
+  padding: 8px;
+}
+
+.share-url-text {
+  display: block;
+  word-break: break-all;
+  font-size: 0.78rem;
+  color: var(--cyan);
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 12px;
+}
+
+.share-modal-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.seg-cat {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+@media (min-width: 520px) {
+  .seg-cat {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
 .badge.series {
   color: #c77dff;
   background: rgba(123, 44, 191, 0.18);

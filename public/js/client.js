@@ -7,9 +7,17 @@
   const LANG_KEY = "keyclash_language";
   const MODE_KEY = "keyclash_mode";
   const PARA_KEY = "keyclash_paragraphs";
+  const CAT_KEY = "keyclash_category";
   const LOCAL_LB_KEY = "keyclash_local_scores";
 
   const LANG_LABELS = { en: "English", tl: "Tagalog" };
+  const CAT_LABELS = {
+    all: "All Facts",
+    science: "Science",
+    space: "Space",
+    animals: "Animals",
+    ph: "Philippines",
+  };
   const MODE_META = {
     classic: {
       label: "Classic",
@@ -88,13 +96,25 @@
     homeLanguage: document.getElementById("home-language"),
     homeMode: document.getElementById("home-mode"),
     homeParagraphs: document.getElementById("home-paragraphs"),
+    homeCategory: document.getElementById("home-category"),
     modeHint: document.getElementById("mode-hint"),
     roomLanguage: document.getElementById("room-language"),
     roomMode: document.getElementById("room-mode"),
     roomParagraphs: document.getElementById("room-paragraphs"),
+    roomCategory: document.getElementById("room-category"),
     langLabel: document.getElementById("lang-label"),
     modeLabel: document.getElementById("mode-label"),
     paraLabel: document.getElementById("para-label"),
+    catLabel: document.getElementById("cat-label"),
+    connectingOverlay: document.getElementById("connecting-overlay"),
+    connectingMsg: document.getElementById("connecting-msg"),
+    connectingTimer: document.getElementById("connecting-timer"),
+    shareModal: document.getElementById("share-modal"),
+    shareQr: document.getElementById("share-qr"),
+    shareUrlText: document.getElementById("share-url-text"),
+    btnShareClose: document.getElementById("btn-share-close"),
+    btnShareCopyLink: document.getElementById("btn-share-copy-link"),
+    btnShareCopyCode: document.getElementById("btn-share-copy-code"),
     practiceParaLabel: document.getElementById("practice-para-label"),
     practiceGhostPanel: document.getElementById("practice-ghost-panel"),
     practiceGhostWpm: document.getElementById("practice-ghost-wpm"),
@@ -196,7 +216,11 @@
     language: localStorage.getItem(LANG_KEY) || "en",
     mode: localStorage.getItem(MODE_KEY) || "classic",
     paragraphs: clampParagraphs(localStorage.getItem(PARA_KEY) || 1),
+    category: localStorage.getItem(CAT_KEY) || "all",
     passage: "",
+    connectStartedAt: Date.now(),
+    connectTimer: null,
+    keepAliveTimer: null,
     caret: 0,
     errors: 0,
     typedWrong: false,
@@ -233,7 +257,19 @@
 
   if (!MODE_META[state.mode]) state.mode = "classic";
   if (state.language !== "en" && state.language !== "tl") state.language = "en";
+  if (!CAT_LABELS[state.category]) state.category = "all";
   state.paragraphs = clampParagraphs(state.paragraphs);
+
+  function setCatSegActive(root, cat) {
+    if (!root) return;
+    root.querySelectorAll(".seg-btn").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.cat === cat);
+    });
+  }
+
+  function catLabel(id) {
+    return CAT_LABELS[id] || "All Facts";
+  }
 
   const savedName = localStorage.getItem("keyclash_name");
   if (savedName) els.name.value = savedName;
@@ -241,6 +277,7 @@
   setLangSegActive(els.homeLanguage, state.language);
   setModeSegActive(els.homeMode, state.mode);
   setParaSegActive(els.homeParagraphs, state.paragraphs);
+  setCatSegActive(els.homeCategory, state.category);
   updateModeHint();
 
   function toast(msg, isError) {
@@ -363,6 +400,12 @@
     state.paragraphs = clampParagraphs(n);
     localStorage.setItem(PARA_KEY, String(state.paragraphs));
     setParaSegActive(els.homeParagraphs, state.paragraphs);
+  });
+
+  wireSeg(els.homeCategory, "cat", (cat) => {
+    state.category = CAT_LABELS[cat] ? cat : "all";
+    localStorage.setItem(CAT_KEY, state.category);
+    setCatSegActive(els.homeCategory, state.category);
   });
 
   wireSeg(els.roomDifficulty, "diff", (diff) => {
@@ -618,6 +661,17 @@
       setParaSegActive(els.roomParagraphs, res.paragraphs);
       if (els.paraLabel) els.paraLabel.textContent = String(res.paragraphs);
       toast(res.paragraphs + " paragraph" + (res.paragraphs > 1 ? "s" : ""));
+    });
+  });
+
+  wireSeg(els.roomCategory, "cat", (cat) => {
+    if (!isHost()) return toast("Only the host can change category", true);
+    socket.emit("room:set-category", { category: cat }, (res) => {
+      if (!res?.ok) return toast(res?.error || "Could not set category", true);
+      state.category = res.category;
+      setCatSegActive(els.roomCategory, res.category);
+      if (els.catLabel) els.catLabel.textContent = catLabel(res.category);
+      toast("Facts: " + catLabel(res.category));
     });
   });
 
@@ -1067,20 +1121,24 @@
     }
 
     const canEdit = host && (state.room.status === "lobby" || state.room.status === "results");
-    [els.roomDifficulty, els.roomLanguage, els.roomMode, els.roomParagraphs].forEach((root) => {
-      if (!root) return;
-      root.querySelectorAll(".seg-btn").forEach((b) => {
-        b.disabled = !canEdit;
-      });
-    });
+    [els.roomDifficulty, els.roomLanguage, els.roomMode, els.roomParagraphs, els.roomCategory].forEach(
+      (root) => {
+        if (!root) return;
+        root.querySelectorAll(".seg-btn").forEach((b) => {
+          b.disabled = !canEdit;
+        });
+      }
+    );
     setSegActive(els.roomDifficulty, state.room.difficulty || state.difficulty);
     setLangSegActive(els.roomLanguage, state.room.language || state.language);
     setModeSegActive(els.roomMode, state.room.mode || state.mode);
     setParaSegActive(els.roomParagraphs, state.room.paragraphs || state.paragraphs);
+    setCatSegActive(els.roomCategory, state.room.category || state.category || "all");
     if (els.diffLabel) els.diffLabel.textContent = capitalize(state.room.difficulty || "normal");
     if (els.langLabel) els.langLabel.textContent = langLabel(state.room.language || state.language);
     if (els.modeLabel) els.modeLabel.textContent = modeLabel(state.room.mode || state.mode);
     if (els.paraLabel) els.paraLabel.textContent = String(state.room.paragraphs || state.paragraphs || 1);
+    if (els.catLabel) els.catLabel.textContent = catLabel(state.room.category || state.category || "all");
 
     updateHostHint();
     updateSeriesChip();
@@ -1339,6 +1397,7 @@
     state.language = room.language || state.language;
     state.mode = room.mode || state.mode;
     state.paragraphs = clampParagraphs(room.paragraphs || state.paragraphs);
+    state.category = room.category || state.category || "all";
     if (room.raceDurationMs) state.raceDurationMs = room.raceDurationMs;
     setStatus(room.status);
 
@@ -1826,6 +1885,7 @@
         language: state.language,
         mode: state.mode,
         paragraphs: String(state.paragraphs),
+        category: state.category || "all",
       });
       const res = await fetch("/api/practice?" + qs.toString());
       if (!res.ok) throw new Error("bad status");
@@ -2025,6 +2085,7 @@
         language: state.language,
         mode: state.mode,
         paragraphs: state.paragraphs,
+        category: state.category,
       },
       (res) => {
         els.btnCreate.disabled = false;
@@ -2249,29 +2310,57 @@
     await copyText(state.room.code, "Room code copied: " + state.room.code);
   });
 
+  function openShareModal(code) {
+    if (!els.shareModal || !state.room) return;
+    const inviteUrl = roomInviteUrl(code || state.room.code);
+    if (els.shareUrlText) els.shareUrlText.textContent = inviteUrl;
+    if (els.shareQr) {
+      els.shareQr.src =
+        "https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=8&data=" +
+        encodeURIComponent(inviteUrl);
+      els.shareQr.alt = "QR for " + inviteUrl;
+    }
+    els.shareModal.hidden = false;
+  }
+
+  function closeShareModal() {
+    if (els.shareModal) els.shareModal.hidden = true;
+  }
+
   if (els.btnShare) {
     els.btnShare.addEventListener("click", async () => {
       if (!state.room) return;
+      openShareModal(state.room.code);
+      // Also try native share on mobile in background
       const inviteUrl = roomInviteUrl(state.room.code);
-      const text = buildInviteText(state.room.code);
-      if (navigator.share) {
+      if (navigator.share && /Mobi|Android/i.test(navigator.userAgent)) {
         try {
           await navigator.share({
             title: "KeyClash",
-            text: text,
+            text: buildInviteText(state.room.code),
             url: inviteUrl,
           });
-          toast("Invite shared");
-          return;
-        } catch {
-          /* fall through to clipboard */
-        }
+        } catch (_) {}
       }
-      // Prefer copying the deep link (one-tap join)
-      await copyText(inviteUrl + "\n" + text, "Invite link copied — friends open it to join your lobby");
-      if (isLocalHost()) {
-        toast("Note: localhost link works on your PC only.", true);
-      }
+    });
+  }
+
+  if (els.btnShareClose) els.btnShareClose.addEventListener("click", closeShareModal);
+  if (els.shareModal) {
+    els.shareModal.addEventListener("click", (e) => {
+      if (e.target === els.shareModal) closeShareModal();
+    });
+  }
+  if (els.btnShareCopyLink) {
+    els.btnShareCopyLink.addEventListener("click", async () => {
+      if (!state.room) return;
+      await copyText(roomInviteUrl(state.room.code), "Invite link copied");
+    });
+  }
+  if (els.btnShareCopyCode) {
+    els.btnShareCopyCode.addEventListener("click", async () => {
+      if (!state.room) return;
+      await copyText(state.room.code, "Room code copied");
     });
   }
 
@@ -2364,13 +2453,59 @@
     els.reconnectBanner.hidden = true;
   });
 
+  function showConnecting(show, msg) {
+    if (!els.connectingOverlay) return;
+    els.connectingOverlay.hidden = !show;
+    if (msg && els.connectingMsg) els.connectingMsg.textContent = msg;
+    if (show) {
+      if (!state.connectTimer) {
+        state.connectStartedAt = Date.now();
+        state.connectTimer = setInterval(() => {
+          const s = Math.floor((Date.now() - state.connectStartedAt) / 1000);
+          if (els.connectingTimer) els.connectingTimer.textContent = s + "s";
+        }, 250);
+      }
+    } else if (state.connectTimer) {
+      clearInterval(state.connectTimer);
+      state.connectTimer = null;
+      if (els.connectingTimer) els.connectingTimer.textContent = "0s";
+    }
+  }
+
+  function startClientKeepAlive() {
+    if (state.keepAliveTimer) return;
+    // Ping health while tab is open (helps free Render stay warm)
+    state.keepAliveTimer = setInterval(() => {
+      fetch("/api/health?_=" + Date.now(), { cache: "no-store" }).catch(() => {});
+    }, 4 * 60 * 1000);
+  }
+
+  // Show overlay until first connection (especially Render cold start)
+  if (!socket.connected) {
+    showConnecting(
+      true,
+      "Free host may take 30–60 seconds to wake up. Please wait — do not close this tab."
+    );
+  }
+  startClientKeepAlive();
+
   socket.on("connect", () => {
     state.myId = socket.id;
+    showConnecting(false);
     const s = loadSession();
     if (s?.roomCode && s?.token && !state.room) {
       tryReconnect(false);
     } else if (!state.room) {
       tryAutoJoinFromUrl();
+    }
+  });
+
+  socket.on("disconnect", () => {
+    if (state.modeScreen === "home" || !state.room) {
+      showConnecting(
+        true,
+        "Reconnecting to server… Free host may take up to a minute."
+      );
     }
   });
 
@@ -2587,12 +2722,12 @@
 
   socket.on("chat:message", (msg) => appendChat(msg));
 
-  socket.on("disconnect", () => {
-    if (state.modeScreen === "game") toast("Connection lost — reconnecting…", true);
-  });
-
   socket.on("connect_error", () => {
-    showHomeError("Cannot reach server. Is KeyClash running?");
+    showConnecting(
+      true,
+      "Cannot reach server yet. If this is Render free tier, wait 30–60s while it wakes up."
+    );
+    showHomeError("Connecting… server may be waking up (free host).");
   });
 
   els.passage.addEventListener("click", () => {

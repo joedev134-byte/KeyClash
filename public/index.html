@@ -6,6 +6,10 @@
     <title>KeyClash — Multiplayer Typing Race</title>
     <meta name="description" content="Neon multiplayer typing race for up to 10 players. Create a room, invite friends, clash for the crown." />
     <meta name="theme-color" content="#07070f" />
+    <meta property="og:title" content="KeyClash — Multiplayer Typing Race" />
+    <meta property="og:description" content="Type facts. Race friends. Up to 10 players. No login required." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -31,6 +35,33 @@
     </div>
 
     <div id="toast-root" class="toast-root" aria-live="polite"></div>
+
+    <!-- Cold start / connecting -->
+    <div id="connecting-overlay" class="connecting-overlay" hidden>
+      <div class="connecting-card glass">
+        <div class="connecting-spinner" aria-hidden="true"></div>
+        <h2>Connecting to server…</h2>
+        <p id="connecting-msg">
+          Free host may take 30–60 seconds to wake up. Please wait — do not close this tab.
+        </p>
+        <p class="connecting-sub" id="connecting-timer">0s</p>
+      </div>
+    </div>
+
+    <!-- Share / QR modal -->
+    <div id="share-modal" class="share-modal" hidden>
+      <div class="share-modal-card glass">
+        <button type="button" class="share-modal-close btn btn-ghost btn-xs" id="btn-share-close">Close</button>
+        <h2>Invite friends</h2>
+        <p class="field-hint">Scan QR or copy the link — they land in your lobby.</p>
+        <img id="share-qr" class="share-qr" alt="Room QR code" width="180" height="180" />
+        <code id="share-url-text" class="share-url-text"></code>
+        <div class="share-modal-actions">
+          <button type="button" class="btn btn-primary" id="btn-share-copy-link">Copy link</button>
+          <button type="button" class="btn btn-secondary" id="btn-share-copy-code">Copy code only</button>
+        </div>
+      </div>
+    </div>
 
     <!-- HOME -->
     <section id="screen-home" class="screen active">
@@ -64,6 +95,18 @@
               <button type="button" class="seg-btn active" data-diff="normal">Normal</button>
               <button type="button" class="seg-btn" data-diff="hard">Hard</button>
             </div>
+          </label>
+
+          <label class="field">
+            <span>Fact category</span>
+            <div class="seg seg-cat" id="home-category" role="group" aria-label="Fact category">
+              <button type="button" class="seg-btn active" data-cat="all">All</button>
+              <button type="button" class="seg-btn" data-cat="science">Science</button>
+              <button type="button" class="seg-btn" data-cat="space">Space</button>
+              <button type="button" class="seg-btn" data-cat="animals">Animals</button>
+              <button type="button" class="seg-btn" data-cat="ph">PH</button>
+            </div>
+            <p class="field-hint">Topic of facts for the race (not mixed with other packs)</p>
           </label>
 
           <label class="field">
@@ -264,6 +307,7 @@
             <span id="mode-label">Classic</span> ·
             <span id="lang-label">English</span> ·
             <span id="diff-label">Normal</span> ·
+            <span id="cat-label">All</span> ·
             <span id="para-label">1</span>p
           </div>
           <div class="round-chip series-chip" id="series-chip" hidden>
@@ -321,6 +365,16 @@
                 <button type="button" class="seg-btn" data-diff="easy">Easy</button>
                 <button type="button" class="seg-btn active" data-diff="normal">Normal</button>
                 <button type="button" class="seg-btn" data-diff="hard">Hard</button>
+              </div>
+            </label>
+            <label class="field field-compact">
+              <span>Facts</span>
+              <div class="seg seg-sm seg-cat" id="room-category" role="group" aria-label="Fact category">
+                <button type="button" class="seg-btn active" data-cat="all">All</button>
+                <button type="button" class="seg-btn" data-cat="science">Sci</button>
+                <button type="button" class="seg-btn" data-cat="space">Space</button>
+                <button type="button" class="seg-btn" data-cat="animals">Animals</button>
+                <button type="button" class="seg-btn" data-cat="ph">PH</button>
               </div>
             </label>
             <label class="field field-compact">
