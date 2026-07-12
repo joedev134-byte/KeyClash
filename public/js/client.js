@@ -406,10 +406,7 @@
     // Keep ad on home only — never during lobby/race/practice
     try {
       const ad = document.getElementById("home-ad-slot");
-      if (ad) {
-        const hiddenByUser = sessionStorage.getItem("keyclash_hide_home_ad") === "1";
-        ad.hidden = which !== "home" || hiddenByUser;
-      }
+      if (ad) ad.hidden = which !== "home";
     } catch (_) {}
   }
 
@@ -4274,21 +4271,9 @@
     els.practiceInput.addEventListener("blur", () => setTimeout(syncVisualViewport, 150));
   }
 
-  // ---- Home ad slot (non-intrusive; hide-able for this browser session) ----
-  const AD_HIDE_KEY = "keyclash_hide_home_ad";
+  // ---- Home ad slot (shown on home only; not hideable by user) ----
   const homeAd = document.getElementById("home-ad-slot");
-  const btnHideAd = document.getElementById("btn-hide-ad");
-
   if (homeAd) {
-    const hiddenByUser = sessionStorage.getItem(AD_HIDE_KEY) === "1";
-    homeAd.hidden = hiddenByUser || state.modeScreen !== "home";
-  }
-
-  if (btnHideAd) {
-    btnHideAd.addEventListener("click", () => {
-      sessionStorage.setItem(AD_HIDE_KEY, "1");
-      if (homeAd) homeAd.hidden = true;
-      toast("Ad hidden for this visit");
-    });
+    homeAd.hidden = state.modeScreen !== "home";
   }
 })();
