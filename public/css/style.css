@@ -181,7 +181,8 @@ button {
   place-content: center;
   justify-items: center;
   gap: 22px;
-  padding: 32px 16px 48px;
+  /* Extra top padding so logo/badge clear the fixed settings gear */
+  padding: max(48px, calc(env(safe-area-inset-top, 0px) + 40px)) 16px 48px;
 }
 
 .brand {
@@ -2174,31 +2175,42 @@ input[type="text"]:focus {
   }
 }
 
-/* —— Settings FAB + modal —— */
+/* —— Settings FAB (always top-right) + modal —— */
 .settings-fab,
 .mute-toggle {
   position: fixed;
-  top: max(12px, env(safe-area-inset-top, 0px));
-  right: max(12px, env(safe-area-inset-right, 0px));
-  z-index: 80;
-  width: 44px;
-  height: 44px;
+  top: max(10px, env(safe-area-inset-top, 0px));
+  right: max(10px, env(safe-area-inset-right, 0px));
+  left: auto;
+  bottom: auto;
+  z-index: 150;
+  width: 46px;
+  height: 46px;
+  margin: 0;
   border-radius: 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(16, 18, 36, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+  background: rgba(12, 14, 28, 0.92);
+  border: 1px solid rgba(0, 245, 212, 0.35);
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 0 20px rgba(0, 245, 212, 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: border-color 0.15s, background 0.15s, transform 0.15s, box-shadow 0.15s;
+  /* Stay clickable above screens; below modals (180+) */
+  pointer-events: auto;
 }
 
 .settings-fab:hover,
 .mute-toggle:hover {
-  border-color: rgba(0, 245, 212, 0.45);
-  background: rgba(20, 24, 48, 0.95);
+  border-color: rgba(0, 245, 212, 0.7);
+  background: rgba(18, 22, 44, 0.98);
+  box-shadow:
+    0 10px 32px rgba(0, 0, 0, 0.5),
+    0 0 24px rgba(0, 245, 212, 0.22);
 }
 
 .settings-fab:active,
@@ -2208,24 +2220,54 @@ input[type="text"]:focus {
 
 .settings-fab.is-muted,
 .mute-toggle.is-muted {
-  border-color: rgba(247, 37, 133, 0.45);
+  border-color: rgba(247, 37, 133, 0.55);
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.45),
+    0 0 18px rgba(247, 37, 133, 0.25);
 }
 
 .settings-fab-icon {
-  font-size: 1.25rem;
+  font-size: 1.35rem;
   line-height: 1;
-  color: var(--text);
+  color: var(--cyan);
+  filter: drop-shadow(0 0 6px rgba(0, 245, 212, 0.35));
 }
 
 .settings-sound-dot {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 8px;
-  height: 8px;
+  top: 7px;
+  right: 7px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: var(--magenta);
   box-shadow: 0 0 8px rgba(247, 37, 133, 0.7);
+  border: 1px solid rgba(7, 7, 15, 0.8);
+}
+
+/* Leave room for FAB so topbars don't feel cramped */
+#screen-game .topbar,
+#screen-practice .topbar {
+  padding-right: 58px;
+}
+
+@media (max-width: 720px) {
+  .settings-fab,
+  .mute-toggle {
+    top: max(8px, env(safe-area-inset-top, 0px));
+    right: max(8px, env(safe-area-inset-right, 0px));
+    width: 44px;
+    height: 44px;
+  }
+
+  #screen-game .topbar,
+  #screen-practice .topbar {
+    padding-right: 52px;
+  }
+
+  .home-shell {
+    padding-top: max(44px, calc(env(safe-area-inset-top, 0px) + 36px));
+  }
 }
 
 .mute-icon {
