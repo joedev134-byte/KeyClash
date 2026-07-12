@@ -486,26 +486,79 @@
   }
 
   /* —— Mobile keyboard / visual viewport —— */
+  function measureTypeDockHeight() {
+    const dock =
+      (state.modeScreen === "practice"
+        ? document.querySelector("#screen-practice .type-dock")
+        : document.querySelector("#screen-game .type-dock")) ||
+      document.querySelector(".type-dock");
+    if (!dock || dock.offsetParent === null) return 56;
+    return Math.max(48, Math.round(dock.getBoundingClientRect().height));
+  }
+
   function syncVisualViewport() {
     const root = document.documentElement;
     const vv = window.visualViewport;
+    const racing =
+      document.body.classList.contains("is-racing") ||
+      (state.racing && state.modeScreen === "game") ||
+      (state.practice && state.practice.racing);
+
     if (vv) {
-      root.style.setProperty("--vvh", Math.round(vv.height) + "px");
-      root.style.setProperty("--vv-offset-top", Math.round(vv.offsetTop) + "px");
+      const vvh = Math.round(vv.height);
+      const vvTop = Math.round(vv.offsetTop);
+      // Space below the visual viewport (= keyboard on most mobile browsers)
+      const kbInset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      root.style.setProperty("--vvh", vvh + "px");
+      root.style.setProperty("--vv-offset-top", vvTop + "px");
+      root.style.setProperty("--kb-inset", kbInset + "px");
+
       const shrink = window.innerHeight - vv.height;
-      const keyboardOpen = shrink > 120 && state.modeScreen !== "home";
+      const keyboardOpen =
+        (shrink > 100 || kbInset > 80) && state.modeScreen !== "home";
       document.body.classList.toggle("keyboard-open", keyboardOpen);
+
+      if (keyboardOpen) {
+        const dockH = measureTypeDockHeight();
+        root.style.setProperty("--dock-h", dockH + "px");
+        // Passage gets almost all remaining visual height
+        const chrome = racing ? 8 : 48;
+        const passageMax = Math.max(120, vvh - dockH - chrome);
+        root.style.setProperty("--passage-max-h", passageMax + "px");
+      } else {
+        root.style.setProperty("--kb-inset", "0px");
+        root.style.removeProperty("--passage-max-h");
+        root.style.removeProperty("--dock-h");
+      }
     } else {
       root.style.setProperty("--vvh", window.innerHeight + "px");
       root.style.setProperty("--vv-offset-top", "0px");
+      root.style.setProperty("--kb-inset", "0px");
+    }
+
+    // Re-pin caret after layout changes (keyboard open/close)
+    if (racing && els.passage && state.racing) {
+      requestAnimationFrame(() => {
+        try {
+          scrollCaretIntoPassage(els.passage, state.caret || 0);
+        } catch (_) {}
+      });
+    }
+    if (state.practice && state.practice.racing && els.practicePassage) {
+      requestAnimationFrame(() => {
+        try {
+          scrollCaretIntoPassage(els.practicePassage, state.practice.caret || 0);
+        } catch (_) {}
+      });
     }
   }
 
   function focusTypeDock(inputEl) {
     if (!inputEl) return;
-    // During race, type dock is fixed — don't scroll the page (keeps passage stable)
-    if (document.body.classList.contains("is-racing")) {
-      setTimeout(syncVisualViewport, 200);
+    // During race, type dock is fixed to visual viewport — no page scroll
+    if (document.body.classList.contains("is-racing") || state.racing) {
+      setTimeout(syncVisualViewport, 80);
+      setTimeout(syncVisualViewport, 320);
       return;
     }
     // After soft keyboard opens, keep the input visible (lobby / practice)
@@ -4205,10 +4258,20 @@
   window.addEventListener("orientationchange", () => setTimeout(syncVisualViewport, 200));
 
   if (els.typeInput) {
-    els.typeInput.addEventListener("focus", () => focusTypeDock(els.typeInput));
+    els.typeInput.addEventListener("focus", () => {
+      focusTypeDock(els.typeInput);
+      setTimeout(syncVisualViewport, 100);
+      setTimeout(syncVisualViewport, 400);
+    });
+    els.typeInput.addEventListener("blur", () => setTimeout(syncVisualViewport, 150));
   }
   if (els.practiceInput) {
-    els.practiceInput.addEventListener("focus", () => focusTypeDock(els.practiceInput));
+    els.practiceInput.addEventListener("focus", () => {
+      focusTypeDock(els.practiceInput);
+      setTimeout(syncVisualViewport, 100);
+      setTimeout(syncVisualViewport, 400);
+    });
+    els.practiceInput.addEventListener("blur", () => setTimeout(syncVisualViewport, 150));
   }
 
   // ---- Home ad slot (non-intrusive; hide-able for this browser session) ----

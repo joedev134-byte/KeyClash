@@ -3475,27 +3475,100 @@ body.is-racing .settings-fab {
     bottom: calc(100px + env(safe-area-inset-bottom, 0px));
   }
 
-  /* Keyboard open: even more room for passage */
-  body.is-racing.keyboard-open .track-board {
-    display: none;
+  /*
+   * Keyboard open during race: MAXIMIZE passage vision.
+   * Screen locks to visual viewport; type dock sits just above keyboard.
+   * Hide all chrome (topbar, tracks, stats, hints, settings).
+   */
+  body.is-racing.keyboard-open #screen-game.active {
+    position: fixed !important;
+    top: var(--vv-offset-top, 0px) !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: auto !important;
+    width: 100% !important;
+    height: var(--vvh, 100dvh) !important;
+    max-height: var(--vvh, 100dvh) !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 4px 8px 0 !important;
+    gap: 4px !important;
+    overflow: hidden !important;
+    z-index: 40;
+    box-sizing: border-box;
   }
 
-  body.is-racing.keyboard-open .stats-row {
-    gap: 2px;
+  body.is-racing.keyboard-open .topbar,
+  body.is-racing.keyboard-open .track-board,
+  body.is-racing.keyboard-open .stats-row,
+  body.is-racing.keyboard-open .input-hint,
+  body.is-racing.keyboard-open .players-panel,
+  body.is-racing.keyboard-open .chat-panel,
+  body.is-racing.keyboard-open .settings-fab,
+  body.is-racing.keyboard-open .ghost-banner {
+    display: none !important;
+  }
+
+  body.is-racing.keyboard-open .game-layout {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    gap: 0 !important;
+  }
+
+  body.is-racing.keyboard-open .arena {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    padding: 6px 6px 0 !important;
+    gap: 4px !important;
+    border-radius: 12px;
   }
 
   body.is-racing.keyboard-open .passage-wrap {
-    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    gap: 0 !important;
+    /* space for compact fixed dock above keyboard */
+    padding-bottom: calc(var(--dock-h, 52px) + 6px) !important;
   }
 
   body.is-racing.keyboard-open .passage {
-    min-height: 120px;
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: var(--passage-max-h, none) !important;
+    font-size: 1.08rem !important;
+    line-height: 1.65 !important;
+    padding: 10px 12px !important;
+    overflow-y: auto !important;
   }
 
-  /* Soft keyboard open: prioritize typing surface */
+  /* Dock sits on top of keyboard via --kb-inset (not layout bottom:0) */
+  body.is-racing.keyboard-open .type-dock {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: var(--kb-inset, 0px) !important;
+    z-index: 50 !important;
+    margin: 0 !important;
+    padding: 6px 10px 8px !important;
+    background: rgba(7, 7, 15, 0.98) !important;
+    border-top: 1px solid rgba(0, 245, 212, 0.28) !important;
+    box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.5) !important;
+  }
+
+  body.is-racing.keyboard-open .type-input {
+    min-height: 44px !important;
+    padding: 10px 12px !important;
+    font-size: 16px !important;
+  }
+
+  /* Soft keyboard open (general / practice) */
   body.keyboard-open .players-panel,
-  body.keyboard-open .chat-panel,
-  body.is-racing.keyboard-open .players-panel {
+  body.keyboard-open .chat-panel {
     display: none !important;
   }
 
@@ -3504,32 +3577,41 @@ body.is-racing .settings-fab {
     display: none;
   }
 
-  body.keyboard-open .track-board,
-  body.is-racing.keyboard-open .track-board {
-    max-height: 48px;
-  }
-
-  body.keyboard-open .passage,
-  body.is-racing.keyboard-open .passage {
-    min-height: 100px;
-    max-height: none;
-    flex: 1 1 auto;
-  }
-
-  body.keyboard-open .stats-row {
-    gap: 4px;
-  }
-
-  body.keyboard-open .stat {
-    padding: 6px;
-  }
-
-  body.keyboard-open .stat-value {
-    font-size: 0.95rem;
-  }
-
   body.keyboard-open .countdown-num {
-    font-size: clamp(3.5rem, 18vw, 5rem);
+    font-size: clamp(3rem, 14vw, 4.5rem);
+  }
+
+  /* Practice solo: same keyboard-max layout */
+  body.keyboard-open #screen-practice.active {
+    position: fixed !important;
+    top: var(--vv-offset-top, 0px) !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: var(--vvh, 100dvh) !important;
+    max-height: var(--vvh, 100dvh) !important;
+    padding: 4px 8px 0 !important;
+    z-index: 40;
+  }
+
+  body.keyboard-open #screen-practice .topbar {
+    display: none !important;
+  }
+
+  body.keyboard-open #screen-practice .type-dock {
+    position: fixed !important;
+    left: 0;
+    right: 0;
+    bottom: var(--kb-inset, 0px) !important;
+    z-index: 50;
+    padding: 6px 10px 8px;
+    background: rgba(7, 7, 15, 0.98);
+    border-top: 1px solid rgba(0, 245, 212, 0.28);
+  }
+
+  body.keyboard-open #practice-passage {
+    max-height: var(--passage-max-h, 50vh) !important;
+    min-height: 100px !important;
+    flex: 1 1 auto;
   }
 
   .practice-layout,
