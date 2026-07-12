@@ -176,17 +176,28 @@ button {
 
 /* Home */
 .home-shell {
+  --home-width: min(440px, 100%);
   min-height: 100vh;
-  display: grid;
-  place-content: center;
-  justify-items: center;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
   gap: 22px;
   /* Extra top padding so logo/badge clear the fixed settings gear */
   padding: max(48px, calc(env(safe-area-inset-top, 0px) + 40px)) 16px 48px;
+  box-sizing: border-box;
 }
 
 .brand {
+  width: var(--home-width);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
+  box-sizing: border-box;
 }
 
 .brand-badge {
@@ -243,10 +254,11 @@ button {
 }
 
 .home-card {
-  width: min(440px, 100%);
+  width: var(--home-width, min(440px, 100%));
   margin: 0 auto;
   border-radius: calc(var(--radius) + 4px);
   padding: 28px;
+  box-sizing: border-box;
 }
 
 .field {
@@ -260,6 +272,103 @@ button {
   color: var(--muted);
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+/* Homepage: center labels, hints, and full-width actions */
+#screen-home .field {
+  justify-items: stretch;
+  text-align: center;
+}
+
+#screen-home .field > span {
+  text-align: center;
+  width: 100%;
+}
+
+#screen-home .field-hint,
+#screen-home .match-hint,
+#screen-home .lb-hint,
+#screen-home .recent-rooms-hint {
+  text-align: center;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+#screen-home .home-actions {
+  width: 100%;
+}
+
+#screen-home .home-actions .btn-lg,
+#screen-home .home-actions .btn-match,
+#screen-home .home-actions .btn-daily,
+#screen-home .home-actions .btn-primary,
+#screen-home .home-actions .btn-secondary {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#screen-home .join-row {
+  width: 100%;
+}
+
+#screen-home .how-to {
+  text-align: left;
+}
+
+#screen-home .how-to-summary {
+  justify-content: center;
+}
+
+#screen-home .how-to-title {
+  flex: 0 1 auto;
+}
+
+#screen-home .panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: center !important;
+  gap: 10px;
+  flex-wrap: wrap;
+  text-align: center;
+  width: 100%;
+}
+
+#screen-home .panel-head h2 {
+  margin: 0;
+  text-align: center;
+}
+
+#screen-home .recent-rooms {
+  text-align: center;
+}
+
+#screen-home .recent-rooms-head {
+  justify-content: center !important;
+  width: 100%;
+}
+
+#screen-home .recent-room-item {
+  text-align: left;
+}
+
+#screen-home .share-help {
+  text-align: center;
+}
+
+#screen-home .share-help strong {
+  text-align: center;
+}
+
+#screen-home .form-error {
+  text-align: center;
+}
+
+#screen-home .reconnect-banner {
+  text-align: center;
+}
+
+#screen-home .reconnect-actions {
+  justify-content: center;
 }
 
 input[type="text"] {
@@ -1387,10 +1496,11 @@ input[type="text"]:focus {
 }
 
 .leaderboard-card {
-  width: min(440px, 100%);
+  width: var(--home-width, min(440px, 100%));
   margin: 0 auto;
   border-radius: calc(var(--radius) + 4px);
   padding: 18px 20px 16px;
+  box-sizing: border-box;
 }
 
 .leaderboard-card .panel-head h2 {
@@ -1504,7 +1614,9 @@ input[type="text"]:focus {
   margin-top: 16px;
   padding: 12px 14px;
   border-radius: 12px;
-  text-align: left;
+  text-align: center;
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .share-help strong {
@@ -1512,6 +1624,7 @@ input[type="text"]:focus {
   color: var(--cyan);
   font-size: 0.85rem;
   margin-bottom: 6px;
+  text-align: center;
 }
 
 .share-help p {
@@ -1519,6 +1632,7 @@ input[type="text"]:focus {
   font-size: 0.8rem;
   color: var(--muted);
   line-height: 1.4;
+  text-align: center;
 }
 
 .share-help .btn {
@@ -1527,11 +1641,12 @@ input[type="text"]:focus {
 
 /* Home ad slot — below CTAs, never overlays game UI */
 .ad-slot {
-  width: min(440px, 100%);
+  width: var(--home-width, min(440px, 100%));
   margin: 0 auto;
   border-radius: 14px;
   padding: 10px 12px 12px;
   border: 1px dashed rgba(255, 255, 255, 0.12);
+  box-sizing: border-box;
   background: rgba(12, 14, 28, 0.55);
 }
 
@@ -2037,8 +2152,9 @@ input[type="text"]:focus {
 
 @media (max-width: 720px) {
   .home-shell {
-    padding: 20px 12px 32px;
-    align-content: start;
+    padding: max(44px, calc(env(safe-area-inset-top, 0px) + 36px)) 12px 32px;
+    align-items: center;
+    max-width: 100%;
   }
 
   .home-card {
@@ -2701,45 +2817,58 @@ body.settings-open {
 .live-status {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  margin: 10px 0 0;
-  padding: 6px 12px;
+  margin: 10px auto 0;
+  padding: 6px 14px;
   border-radius: 999px;
   font-size: 0.82rem;
   color: var(--muted);
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid rgba(0, 245, 212, 0.2);
+  text-align: center;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .stats-strip {
-  margin: 8px 0 0;
+  display: block;
+  margin: 8px auto 0;
   padding: 8px 14px;
   border-radius: 12px;
   font-size: 0.84rem;
   color: var(--text);
   background: rgba(123, 44, 191, 0.12);
   border: 1px solid rgba(123, 44, 191, 0.35);
-  max-width: min(520px, 100%);
+  width: 100%;
+  max-width: 100%;
   line-height: 1.4;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 .streak-strip {
-  margin-top: 12px;
+  margin: 12px auto 0;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   padding: 10px 14px;
   border-radius: 14px;
   background: rgba(255, 214, 10, 0.08);
   border: 1px solid rgba(255, 214, 10, 0.28);
-  max-width: min(440px, 100%);
+  width: 100%;
+  max-width: 100%;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 #streak-text {
   font-size: 0.9rem;
   font-weight: 600;
   color: var(--yellow);
+  text-align: center;
 }
 
 .badge-row {
@@ -2818,13 +2947,37 @@ body.settings-open {
 }
 
 .daily-board-card {
-  width: min(440px, 100%);
+  width: 100%;
+  max-width: 100%;
+  margin: 16px auto 0;
   padding: 16px 18px;
   border-radius: 18px;
+  box-sizing: border-box;
+  text-align: center;
 }
 
 .daily-board-card .panel-head {
   margin-bottom: 4px;
+  justify-content: center;
+}
+
+#screen-home .daily-board-card .field-hint,
+#screen-home .daily-board-meta {
+  text-align: center;
+}
+
+/* Nested glass cards inside home-card keep full width of parent */
+#screen-home .home-card > .daily-board-card,
+#screen-home .home-card > .share-help,
+#screen-home .home-card > .recent-rooms,
+#screen-home .home-card > .reconnect-banner {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#screen-home .home-foot {
+  width: var(--home-width, min(440px, 100%));
+  text-align: center;
 }
 
 .share-card {
