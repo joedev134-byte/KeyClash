@@ -25,6 +25,7 @@ const leaderboard = require("./leaderboard");
 const analytics = require("./analytics");
 const daily = require("./daily");
 const { censorText } = require("./censor");
+const security = require("./security");
 
 /** Competitive WPM ceiling (multiplayer / 1v1). */
 const MAX_RACE_WPM = 220;
@@ -32,14 +33,26 @@ const MAX_RACE_WPM = 220;
 const MAX_CHARS_PER_SEC = 22;
 
 const app = express();
+// Render / Cloudflare terminate TLS and set X-Forwarded-*
+app.set("trust proxy", 1);
+
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*" },
+  cors: {
+    origin(origin, cb) {
+      // Allow same-site + https public clients; deny clearly bad schemes
+      cb(null, security.isAllowedOrigin(origin));
+    },
+    methods: ["GET", "POST"],
+  },
   pingTimeout: 25000,
   pingInterval: 8000,
+  maxHttpBufferSize: 1e5, // 100kb — block huge payloads
   // Helpful behind Render / reverse proxies
   allowEIO3: true,
   transports: ["websocket", "polling"],
+  // Soft connection flood protection
+  connectTimeout: 15000,
 });
 
 const PORT = process.env.PORT || 3000;
@@ -58,7 +71,18 @@ const matchQueue = new Map();
 /** Friend duel invites while searching: code → { hostSocketId, entry, createdAt } */
 const duelInvites = new Map();
 
-app.use(express.json({ limit: "32kb" }));
+app.use(security.securityHeaders);
+app.use(express.json({ limit: "16kb" }));
+
+// Global API rate limit (free in-memory — resets on restart)
+app.use(
+  "/api/",
+  security.httpRateLimit({
+    prefix: "api",
+    limit: security.LIMITS.API_GENERAL.limit,
+    windowMs: security.LIMITS.API_GENERAL.windowMs,
+  })
+);
 
 function requestOrigin(req) {
   // Prefer HTTPS in production (Render / reverse proxies)
@@ -172,14 +196,25 @@ app.get("/api/daily/board", (req, res) => {
   res.json(daily.getBoard(req.query.language, req.query.limit));
 });
 
-app.post("/api/daily", (req, res) => {
-  const result = daily.submitDaily(req.body || {});
-  if (!result.ok) {
-    res.status(400).json(result);
-    return;
+app.post(
+  "/api/daily",
+  security.httpRateLimit({
+    prefix: "daily",
+    limit: security.LIMITS.API_DAILY.limit,
+    windowMs: security.LIMITS.API_DAILY.windowMs,
+  }),
+  (req, res) => {
+    const body = req.body || {};
+    // Normalize name before store
+    body.name = security.sanitizePlayerName(body.name, censorText);
+    const result = daily.submitDaily(body);
+    if (!result.ok) {
+      res.status(400).json(result);
+      return;
+    }
+    res.json(result);
   }
-  res.json(result);
-});
+);
 
 app.get("/api/difficulties", (_req, res) => {
   res.json({ difficulties: listDifficulties() });
@@ -237,20 +272,31 @@ app.get("/api/leaderboard", (req, res) => {
   });
 });
 
-app.post("/api/leaderboard", (req, res) => {
-  const result = leaderboard.submitScore(req.body || {});
-  if (!result.ok) {
-    res.status(400).json(result);
-    return;
+app.post(
+  "/api/leaderboard",
+  security.httpRateLimit({
+    prefix: "score",
+    limit: security.LIMITS.API_SCORE.limit,
+    windowMs: security.LIMITS.API_SCORE.windowMs,
+  }),
+  (req, res) => {
+    const body = req.body || {};
+    body.name = security.sanitizePlayerName(body.name, censorText);
+    // Only allow known modes/langs lengths already limited in leaderboard.js
+    const result = leaderboard.submitScore(body);
+    if (!result.ok) {
+      res.status(400).json(result);
+      return;
+    }
+    // Notify all connected clients so home leaderboard re-renders live
+    io.emit("leaderboard:update", {
+      entry: result.entry,
+      top: leaderboard.getTop(15, { period: "all" }),
+      topWeek: leaderboard.getTop(15, { period: "week" }),
+    });
+    res.json(result);
   }
-  // Notify all connected clients so home leaderboard re-renders live
-  io.emit("leaderboard:update", {
-    entry: result.entry,
-    top: leaderboard.getTop(15, { period: "all" }),
-    topWeek: leaderboard.getTop(15, { period: "week" }),
-  });
-  res.json(result);
-});
+);
 
 const COLORS = [
   "#00f5d4",
@@ -898,12 +944,14 @@ function startCountdown(room) {
 }
 
 function sanitizeName(name) {
-  const cleaned = String(name || "")
-    .trim()
-    .slice(0, 16)
-    .replace(/[<>]/g, "");
-  const censored = censorText(cleaned);
-  return censored || "Racer";
+  return security.sanitizePlayerName(name, censorText);
+}
+
+/** Per-socket event flood guard */
+function socketRateOk(socket, kind, limit, windowMs) {
+  const ip = security.clientIp(socket);
+  const r = security.rateLimit(`sock:${kind}:${ip}:${socket.id}`, limit, windowMs);
+  return r.ok;
 }
 
 function validateRoomCode(code) {
@@ -1041,8 +1089,54 @@ function assertHostLobby(room, socket, cb) {
 io.on("connection", (socket) => {
   socket.data.roomCode = null;
 
+  // Drop abusive clients that spam any events
+  socket.use((packet, next) => {
+    if (
+      !socketRateOk(
+        socket,
+        "any",
+        security.LIMITS.SOCKET_EVENTS.limit,
+        security.LIMITS.SOCKET_EVENTS.windowMs
+      )
+    ) {
+      return next(new Error("RATE_LIMIT"));
+    }
+    next();
+  });
+
+  socket.on("error", () => {
+    /* swallow protocol errors from rate limit */
+  });
+
   socket.on("room:create", ({ name, difficulty, language, mode, paragraphs, category }, cb) => {
     try {
+      if (
+        !socketRateOk(
+          socket,
+          "create",
+          security.LIMITS.ROOM_CREATE.limit,
+          security.LIMITS.ROOM_CREATE.windowMs
+        )
+      ) {
+        if (typeof cb === "function") {
+          cb({
+            ok: false,
+            error: "Too many rooms created. Wait a moment.",
+            code: "RATE_LIMIT",
+          });
+        }
+        return;
+      }
+      if (rooms.size >= security.LIMITS.MAX_ROOMS) {
+        if (typeof cb === "function") {
+          cb({
+            ok: false,
+            error: "Server is full. Try again in a bit.",
+            code: "SERVER_FULL",
+          });
+        }
+        return;
+      }
       const code = generateCode();
       const modeNorm = normalizeMode(mode);
       const player = createPlayer(
@@ -1103,6 +1197,33 @@ io.on("connection", (socket) => {
   /** Online 1v1 — find a random real opponent (not a ghost). */
   socket.on("match:find", (payload, cb) => {
     try {
+      if (
+        !socketRateOk(
+          socket,
+          "match",
+          security.LIMITS.MATCH.limit,
+          security.LIMITS.MATCH.windowMs
+        )
+      ) {
+        if (typeof cb === "function") {
+          cb({
+            ok: false,
+            error: "Too many matchmaking requests. Wait a bit.",
+            code: "RATE_LIMIT",
+          });
+        }
+        return;
+      }
+      if (matchQueue.size >= security.LIMITS.MAX_QUEUE) {
+        if (typeof cb === "function") {
+          cb({
+            ok: false,
+            error: "Matchmaking queue is full. Try again shortly.",
+            code: "QUEUE_FULL",
+          });
+        }
+        return;
+      }
       leaveMatchQueue(socket.id);
 
       // Leave any current room first
@@ -1200,6 +1321,33 @@ io.on("connection", (socket) => {
    */
   socket.on("match:invite-create", (payload, cb) => {
     try {
+      if (
+        !socketRateOk(
+          socket,
+          "match",
+          security.LIMITS.MATCH.limit,
+          security.LIMITS.MATCH.windowMs
+        )
+      ) {
+        if (typeof cb === "function") {
+          cb({
+            ok: false,
+            error: "Too many invites. Wait a moment.",
+            code: "RATE_LIMIT",
+          });
+        }
+        return;
+      }
+      if (duelInvites.size >= security.LIMITS.MAX_DUELS) {
+        if (typeof cb === "function") {
+          cb({
+            ok: false,
+            error: "Too many open invites on the server. Try later.",
+            code: "SERVER_FULL",
+          });
+        }
+        return;
+      }
       let entry = matchQueue.get(socket.id);
       if (!entry) {
         // Ensure host is in queue with current prefs
@@ -1260,6 +1408,23 @@ io.on("connection", (socket) => {
   /** Friend joins a duel invite → immediate 1v1 room with host. */
   socket.on("match:invite-join", (payload, cb) => {
     try {
+      if (
+        !socketRateOk(
+          socket,
+          "join",
+          security.LIMITS.ROOM_JOIN.limit,
+          security.LIMITS.ROOM_JOIN.windowMs
+        )
+      ) {
+        if (typeof cb === "function") {
+          cb({
+            ok: false,
+            error: "Too many join attempts. Slow down.",
+            code: "RATE_LIMIT",
+          });
+        }
+        return;
+      }
       const code = String((payload && payload.code) || "")
         .trim()
         .toUpperCase()
@@ -1429,6 +1594,23 @@ io.on("connection", (socket) => {
 
   socket.on("room:join", ({ code, name }, cb) => {
     try {
+      if (
+        !socketRateOk(
+          socket,
+          "join",
+          security.LIMITS.ROOM_JOIN.limit,
+          security.LIMITS.ROOM_JOIN.windowMs
+        )
+      ) {
+        if (typeof cb === "function") {
+          cb({
+            ok: false,
+            error: "Too many join attempts. Slow down.",
+            code: "RATE_LIMIT",
+          });
+        }
+        return;
+      }
       leaveMatchQueue(socket.id);
 
       const checked = validateRoomCode(code);
@@ -1800,11 +1982,22 @@ io.on("connection", (socket) => {
   });
 
   socket.on("race:progress", (payload) => {
+    if (
+      !socketRateOk(
+        socket,
+        "progress",
+        security.LIMITS.PROGRESS.limit,
+        security.LIMITS.PROGRESS.windowMs
+      )
+    ) {
+      return;
+    }
     const room = rooms.get(socket.data.roomCode);
     if (!room || room.status !== "racing") return;
     const player = room.players.get(socket.id);
     if (!player || player.finished || player.disconnected || player.eliminated) return;
     if (!room.passage) return;
+    if (!payload || typeof payload !== "object") return;
 
     let correct = Math.max(0, Math.min(Number(payload.correct) || 0, room.passage.length));
     let errors = Math.max(0, Math.min(Number(payload.errors) || 0, 9999));
@@ -1916,16 +2109,22 @@ io.on("connection", (socket) => {
   });
 
   socket.on("chat:message", ({ text }) => {
+    if (
+      !socketRateOk(
+        socket,
+        "chat",
+        security.LIMITS.CHAT.limit,
+        security.LIMITS.CHAT.windowMs
+      )
+    ) {
+      return;
+    }
     const room = rooms.get(socket.data.roomCode);
     if (!room) return;
     const player = room.players.get(socket.id);
     if (!player || player.disconnected) return;
-    const raw = String(text || "")
-      .trim()
-      .slice(0, 120);
-    if (!raw) return;
-    // Asterisk filter for bad words (EN + common TL)
-    const clean = censorText(raw);
+    const clean = security.sanitizeChat(text, censorText);
+    if (!clean) return;
     io.to(room.code).emit("chat:message", {
       id: player.id,
       name: player.name,

@@ -92,6 +92,19 @@ Use a free monitor so the server stays warmer even with no players:
 | `GET /api/health` | Online / queue / rooms |
 | `GET /api/stats` | Aggregate 1v1 counts + live strip data (no personal data) |
 
+### Free security (built-in)
+
+No paid WAF required for basic protection. KeyClash includes:
+
+- HTTPS via Render/Cloudflare
+- Security headers (CSP, frame, nosniff, HSTS)
+- Rate limits on API scores, daily posts, room create/join, chat, matchmaking
+- Caps on rooms / queue size (protect free-tier memory)
+- Stricter player names + chat sanitizing
+- WPM / progress anti-burst checks on races
+
+Optional free extras: UptimeRobot on `/api/ping`, keep `ALLOWED_ORIGINS` if you add a custom domain later.
+
 ---
 
 ## C) Docker (any VPS / Railway Docker)
