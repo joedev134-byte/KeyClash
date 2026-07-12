@@ -1532,7 +1532,7 @@
     const elapsed = state.raceStart ? Math.max(1, Date.now() - state.raceStart) : 1;
     const minutes = elapsed / 60000;
     const correct = state.caret;
-    const wpm = Math.min(400, Math.round(correct / 5 / minutes) || 0);
+    const wpm = Math.min(220, Math.round(correct / 5 / minutes) || 0);
     const total = correct + state.errors;
     const acc = total === 0 ? 100 : Math.round((correct / total) * 100);
     const prog = state.passage ? Math.round((correct / state.passage.length) * 100) : 0;
