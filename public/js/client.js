@@ -9,8 +9,20 @@
   const PARA_KEY = "keyclash_paragraphs";
   const CAT_KEY = "keyclash_category";
   const LOCAL_LB_KEY = "keyclash_local_scores";
+  const RECENT_ROOMS_KEY = "keyclash_recent_rooms";
+  const HOWTO_KEY = "keyclash_howto_collapsed";
 
-  const LANG_LABELS = { en: "English", tl: "Tagalog" };
+  const LANG_LABELS = {
+    en: "English",
+    tl: "Tagalog",
+    es: "Spanish",
+    id: "Indonesian",
+    ja: "Japanese",
+    pt: "Portuguese",
+    fr: "French",
+    de: "German",
+  };
+  const LANG_IDS = Object.keys(LANG_LABELS);
   const CAT_LABELS = {
     all: "All Facts",
     science: "Science",
@@ -91,6 +103,13 @@
     btnCreate: document.getElementById("btn-create"),
     btnJoin: document.getElementById("btn-join"),
     btnPractice: document.getElementById("btn-practice"),
+    btnMatch: document.getElementById("btn-match"),
+    matchOverlay: document.getElementById("match-overlay"),
+    matchTitle: document.getElementById("match-title"),
+    matchMsg: document.getElementById("match-msg"),
+    matchDetail: document.getElementById("match-detail"),
+    matchTimer: document.getElementById("match-timer"),
+    btnMatchCancel: document.getElementById("btn-match-cancel"),
     homeError: document.getElementById("home-error"),
     homeDifficulty: document.getElementById("home-difficulty"),
     homeLanguage: document.getElementById("home-language"),
@@ -207,6 +226,20 @@
     pStatAcc: document.getElementById("p-stat-acc"),
     pStatProg: document.getElementById("p-stat-prog"),
     pStatErr: document.getElementById("p-stat-err"),
+    btnMute: document.getElementById("btn-mute"),
+    btnSettings: document.getElementById("btn-settings"),
+    settingsModal: document.getElementById("settings-modal"),
+    btnSettingsClose: document.getElementById("btn-settings-close"),
+    btnSettingsDone: document.getElementById("btn-settings-done"),
+    btnSettingsTest: document.getElementById("btn-settings-test-sound"),
+    settingsMute: document.getElementById("settings-mute"),
+    settingsVolume: document.getElementById("settings-volume"),
+    settingsKeySfx: document.getElementById("settings-key-sfx"),
+    settingsLanguage: document.getElementById("settings-language"),
+    recentRooms: document.getElementById("recent-rooms"),
+    recentRoomsList: document.getElementById("recent-rooms-list"),
+    btnClearRecent: document.getElementById("btn-clear-recent"),
+    howToPlay: document.getElementById("how-to-play"),
   };
 
   const state = {
@@ -254,10 +287,13 @@
       timerId: null,
     },
     autoReconnecting: false,
+    matchmaking: false,
+    matchSearchStartedAt: 0,
+    matchTimerId: null,
   };
 
   if (!MODE_META[state.mode]) state.mode = "classic";
-  if (state.language !== "en" && state.language !== "tl") state.language = "en";
+  if (!LANG_IDS.includes(state.language)) state.language = "en";
   if (!CAT_LABELS[state.category]) state.category = "all";
   state.paragraphs = clampParagraphs(state.paragraphs);
 
@@ -306,8 +342,10 @@
     els.practice.classList.toggle("active", which === "practice");
     if (which === "home") {
       updateReconnectBanner();
+      renderRecentRooms();
       loadLeaderboard();
       startLeaderboardHomePoll();
+      document.body.classList.remove("keyboard-open");
     } else {
       stopLeaderboardHomePoll();
     }
@@ -319,6 +357,109 @@
         ad.hidden = which !== "home" || hiddenByUser;
       }
     } catch (_) {}
+  }
+
+  /* —— Recent rooms (local) —— */
+  function readRecentRooms() {
+    try {
+      const list = JSON.parse(localStorage.getItem(RECENT_ROOMS_KEY) || "[]");
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function writeRecentRooms(list) {
+    try {
+      localStorage.setItem(RECENT_ROOMS_KEY, JSON.stringify(list.slice(0, 8)));
+    } catch (_) {}
+  }
+
+  function pushRecentRoom(code, meta) {
+    const roomCode = String(code || "")
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .slice(0, 6);
+    if (!roomCode || roomCode.length < 4) return;
+    const entry = {
+      code: roomCode,
+      name: (meta && meta.name) || getName(),
+      mode: (meta && meta.mode) || state.mode,
+      at: Date.now(),
+    };
+    const next = [entry, ...readRecentRooms().filter((r) => r && r.code !== roomCode)];
+    writeRecentRooms(next);
+    renderRecentRooms();
+  }
+
+  function clearRecentRooms() {
+    writeRecentRooms([]);
+    renderRecentRooms();
+    toast("Recent rooms cleared");
+  }
+
+  function formatRecentAge(ts) {
+    const ms = Date.now() - (ts || 0);
+    if (ms < 60000) return "just now";
+    if (ms < 3600000) return Math.floor(ms / 60000) + "m ago";
+    if (ms < 86400000) return Math.floor(ms / 3600000) + "h ago";
+    return Math.floor(ms / 86400000) + "d ago";
+  }
+
+  function renderRecentRooms() {
+    if (!els.recentRooms || !els.recentRoomsList) return;
+    const list = readRecentRooms().filter((r) => r && r.code);
+    if (!list.length) {
+      els.recentRooms.hidden = true;
+      els.recentRoomsList.innerHTML = "";
+      return;
+    }
+    els.recentRooms.hidden = false;
+    els.recentRoomsList.innerHTML = list
+      .map((r, i) => {
+        const label = i === 0 ? "Play again" : "Join";
+        return `
+        <li class="recent-room-item">
+          <div class="recent-room-meta">
+            <code class="recent-room-code">${escapeHtml(r.code)}</code>
+            <span class="recent-room-sub">${escapeHtml(modeLabel(r.mode || "classic"))} · ${formatRecentAge(r.at)}</span>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm recent-join-btn" data-code="${escapeHtml(r.code)}">${label}</button>
+        </li>`;
+      })
+      .join("");
+  }
+
+  /* —— Mobile keyboard / visual viewport —— */
+  function syncVisualViewport() {
+    const root = document.documentElement;
+    const vv = window.visualViewport;
+    if (vv) {
+      root.style.setProperty("--vvh", Math.round(vv.height) + "px");
+      root.style.setProperty("--vv-offset-top", Math.round(vv.offsetTop) + "px");
+      const shrink = window.innerHeight - vv.height;
+      const keyboardOpen = shrink > 120 && state.modeScreen !== "home";
+      document.body.classList.toggle("keyboard-open", keyboardOpen);
+    } else {
+      root.style.setProperty("--vvh", window.innerHeight + "px");
+      root.style.setProperty("--vv-offset-top", "0px");
+    }
+  }
+
+  function focusTypeDock(inputEl) {
+    if (!inputEl) return;
+    // After soft keyboard opens, keep the input visible
+    requestAnimationFrame(() => {
+      try {
+        inputEl.scrollIntoView({ block: "end", inline: "nearest", behavior: "smooth" });
+      } catch (_) {
+        try {
+          inputEl.scrollIntoView(false);
+        } catch (__) {}
+      }
+    });
+    setTimeout(syncVisualViewport, 280);
   }
 
   function getName() {
@@ -392,10 +533,22 @@
     setSegActive(els.homeDifficulty, diff);
   });
 
-  wireSeg(els.homeLanguage, "lang", (lang) => {
+  function applyLanguage(lang, opts) {
+    const options = opts || {};
+    if (!LANG_IDS.includes(lang)) lang = "en";
     state.language = lang;
     localStorage.setItem(LANG_KEY, lang);
     setLangSegActive(els.homeLanguage, lang);
+    setLangSegActive(els.settingsLanguage, lang);
+    if (options.toast) toast("Language · " + langLabel(lang));
+  }
+
+  wireSeg(els.homeLanguage, "lang", (lang) => {
+    applyLanguage(lang);
+  });
+
+  wireSeg(els.settingsLanguage, "lang", (lang) => {
+    applyLanguage(lang, { toast: true });
   });
 
   wireSeg(els.homeMode, "mode", (mode) => {
@@ -1061,7 +1214,10 @@
     if (!state.room) return;
     const players = state.room.players;
     const connected = players.filter((p) => p.connected !== false).length;
-    els.playerCount.textContent = `${connected}/${state.room.maxPlayers || 10}`;
+    const cap = state.room.maxPlayers || 10;
+    els.playerCount.textContent = state.room.quickMatch
+      ? `${connected}/2 · 1v1`
+      : `${connected}/${cap}`;
     els.playerList.innerHTML = "";
 
     players.forEach((p) => {
@@ -1297,11 +1453,13 @@
     el.innerHTML = html;
     const cur = el.querySelector(".char.current");
     if (cur) {
-      // Keep caret visible without horizontal jump off-screen
+      // Keep caret visible; auto is smoother on mobile while typing
       try {
-        cur.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+        cur.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" });
       } catch (_) {
-        cur.scrollIntoView(false);
+        try {
+          cur.scrollIntoView(false);
+        } catch (__) {}
       }
     }
   }
@@ -2135,14 +2293,151 @@
 
   function enterGame(room, session) {
     if (session) saveSession(session);
+    if (room && room.code) {
+      pushRecentRoom(room.code, {
+        name: getName(),
+        mode: room.mode || state.mode,
+      });
+    }
     applyRoom(room);
     showScreen("game");
     KeyClashFX.SFX.join();
     showHomeError("");
   }
 
+  /* —— Online 1v1 matchmaking —— */
+  function stopMatchTimer() {
+    if (state.matchTimerId) {
+      clearInterval(state.matchTimerId);
+      state.matchTimerId = null;
+    }
+  }
+
+  function showMatchOverlay(searching) {
+    if (!els.matchOverlay) return;
+    els.matchOverlay.hidden = false;
+    const card = els.matchOverlay.querySelector(".match-card");
+    if (card) card.classList.toggle("is-found", !searching);
+    if (searching) {
+      if (els.matchTitle) els.matchTitle.textContent = "Finding opponent…";
+      if (els.matchMsg) {
+        els.matchMsg.textContent =
+          "Looking for a real online player for a 1v1 race (not a ghost).";
+      }
+      const modeForMatch =
+        state.mode === "ghost" || state.mode === "team" ? "classic" : state.mode;
+      if (els.matchDetail) {
+        els.matchDetail.textContent =
+          langLabel(state.language) +
+          " · " +
+          capitalize(state.difficulty) +
+          " · " +
+          modeLabel(modeForMatch);
+      }
+      state.matchSearchStartedAt = Date.now();
+      stopMatchTimer();
+      if (els.matchTimer) els.matchTimer.textContent = "0s";
+      state.matchTimerId = setInterval(() => {
+        if (!els.matchTimer) return;
+        const s = Math.floor((Date.now() - state.matchSearchStartedAt) / 1000);
+        els.matchTimer.textContent = s + "s";
+      }, 250);
+    }
+  }
+
+  function hideMatchOverlay() {
+    if (els.matchOverlay) els.matchOverlay.hidden = true;
+    stopMatchTimer();
+    state.matchmaking = false;
+    if (els.btnMatch) els.btnMatch.disabled = false;
+  }
+
+  function cancelMatchmaking(silent) {
+    if (!state.matchmaking && (!els.matchOverlay || els.matchOverlay.hidden)) {
+      hideMatchOverlay();
+      return;
+    }
+    socket.emit("match:cancel", {}, () => {});
+    hideMatchOverlay();
+    if (!silent) toast("Search cancelled");
+  }
+
+  function startMatchmaking() {
+    showHomeError("");
+    if (state.matchmaking) return;
+    if (!socket.connected) {
+      showHomeError("Not connected yet — wait a moment, then try again.");
+      toast("Connecting to server…", true);
+      socket.connect();
+      return;
+    }
+
+    state.matchmaking = true;
+    if (els.btnMatch) els.btnMatch.disabled = true;
+    showMatchOverlay(true);
+
+    const modeForMatch =
+      state.mode === "ghost" || state.mode === "team" ? "classic" : state.mode;
+
+    socket.timeout(12000).emit(
+      "match:find",
+      {
+        name: getName(),
+        language: state.language,
+        difficulty: state.difficulty,
+        mode: modeForMatch,
+        paragraphs: state.paragraphs,
+        category: state.category,
+      },
+      (err, res) => {
+        if (err) {
+          hideMatchOverlay();
+          showHomeError(
+            "Matchmaking timed out. Free server may be waking up — try again."
+          );
+          toast("Matchmaking timed out", true);
+          return;
+        }
+        if (!res || !res.ok) {
+          hideMatchOverlay();
+          showHomeError((res && res.error) || "Could not start search.");
+          toast((res && res.error) || "Matchmaking failed", true);
+          return;
+        }
+        if (res.status === "matched" && res.room) {
+          // match:found event also fires — enterGame may run twice; applyRoom is safe
+          hideMatchOverlay();
+          // session arrives on match:found; if only here, still enter lobby
+          if (!state.room || state.room.code !== res.room.code) {
+            enterGame(res.room, null);
+          }
+          toast("Opponent found — race starting!");
+          return;
+        }
+        // status searching — wait for match:found
+        if (els.matchMsg) {
+          els.matchMsg.textContent =
+            "In queue… waiting for another player with the same language.";
+        }
+      }
+    );
+  }
+
+  function onMatchFound(payload) {
+    if (!payload || !payload.room) return;
+    hideMatchOverlay();
+    const opp = payload.opponent;
+    enterGame(payload.room, payload.session);
+    const oppName = (opp && opp.name) || "Opponent";
+    toast("1v1 vs " + oppName + " — race starts soon!");
+    if (els.inputHint) {
+      els.inputHint.textContent = "1v1 match found — get ready…";
+    }
+  }
+
   els.btnCreate.addEventListener("click", () => {
     showHomeError("");
+    cancelMatchmaking(true);
     els.btnCreate.disabled = true;
     socket.emit(
       "room:create",
@@ -2169,12 +2464,37 @@
 
   els.btnJoin.addEventListener("click", () => {
     showHomeError("");
+    cancelMatchmaking(true);
     joinRoom((els.code.value || "").trim().toUpperCase());
   });
 
   els.btnPractice.addEventListener("click", () => {
     showHomeError("");
+    cancelMatchmaking(true);
     startPractice();
+  });
+
+  if (els.btnMatch) {
+    els.btnMatch.addEventListener("click", () => startMatchmaking());
+  }
+  if (els.btnMatchCancel) {
+    els.btnMatchCancel.addEventListener("click", () => cancelMatchmaking(false));
+  }
+
+  socket.on("match:found", (payload) => {
+    onMatchFound(payload);
+  });
+
+  socket.on("match:searching", (info) => {
+    if (!state.matchmaking) return;
+    if (els.matchMsg) {
+      els.matchMsg.textContent =
+        "Searching… queue " + ((info && info.queueSize) || 1) + " player(s).";
+    }
+  });
+
+  socket.on("match:cancelled", () => {
+    hideMatchOverlay();
   });
 
   function exitPractice() {
@@ -2231,6 +2551,13 @@
   }
 
   els.btnLeave.addEventListener("click", () => {
+    const lastCode = state.room && state.room.code;
+    if (lastCode) {
+      pushRecentRoom(lastCode, {
+        name: getName(),
+        mode: (state.room && state.room.mode) || state.mode,
+      });
+    }
     socket.emit("room:leave", () => {
       clearSession();
       state.room = null;
@@ -2238,7 +2565,7 @@
       endLocalRace();
       stopUiTimer();
       showScreen("home");
-      toast("Left room");
+      toast(lastCode ? "Left room · tap Play again to rejoin " + lastCode : "Left room");
     });
   });
 
@@ -2297,6 +2624,7 @@
       return;
     }
     if (state.joinInFlight) return;
+    cancelMatchmaking(true);
     state.joinInFlight = true;
     if (els.btnJoin) els.btnJoin.disabled = true;
     if (!options.silent) toast("Joining " + roomCode + "…");
@@ -2506,6 +2834,12 @@
           return;
         }
         saveSession(res.session);
+        if (res.room && res.room.code) {
+          pushRecentRoom(res.room.code, {
+            name: s.name || getName(),
+            mode: res.room.mode || state.mode,
+          });
+        }
         applyRoom(res.room);
         showScreen("game");
         toast(manual ? "Reconnected!" : "Session restored");
@@ -2633,7 +2967,13 @@
           });
         }
       });
-      els.playerCount.textContent = `${room.players.filter((p) => p.connected !== false).length}/${room.maxPlayers || 10}`;
+      {
+        const n = room.players.filter((p) => p.connected !== false).length;
+        const cap = room.maxPlayers || 10;
+        els.playerCount.textContent = room.quickMatch
+          ? `${n}/2 · 1v1`
+          : `${n}/${cap}`;
+      }
       return;
     }
 
@@ -2832,7 +3172,9 @@
   });
 
   updateReconnectBanner();
+  renderRecentRooms();
   loadLeaderboard();
+  syncVisualViewport();
 
   // Prefill room from share link even before socket connects
   const urlRoom = getRoomFromUrl();
@@ -2847,6 +3189,180 @@
     tryAutoJoinFromUrl();
   } else if (urlRoom) {
     toast("Connecting to room " + urlRoom + "…");
+  }
+
+  // ---- Settings modal (language + sound calibration) ----
+  function openSettings() {
+    if (!els.settingsModal) return;
+    if (window.KeyClashFX) KeyClashFX.syncAudioUi();
+    setLangSegActive(els.settingsLanguage, state.language);
+    els.settingsModal.hidden = false;
+    document.body.classList.add("settings-open");
+  }
+
+  function closeSettings() {
+    if (!els.settingsModal) return;
+    els.settingsModal.hidden = true;
+    document.body.classList.remove("settings-open");
+  }
+
+  if (els.btnSettings) {
+    els.btnSettings.addEventListener("click", openSettings);
+  }
+  if (els.btnSettingsClose) {
+    els.btnSettingsClose.addEventListener("click", closeSettings);
+  }
+  if (els.btnSettingsDone) {
+    els.btnSettingsDone.addEventListener("click", closeSettings);
+  }
+  if (els.settingsModal) {
+    els.settingsModal.addEventListener("click", (e) => {
+      if (e.target === els.settingsModal) closeSettings();
+    });
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && els.settingsModal && !els.settingsModal.hidden) {
+      closeSettings();
+    }
+  });
+
+  if (window.KeyClashFX) {
+    KeyClashFX.syncAudioUi();
+
+    if (els.settingsMute) {
+      els.settingsMute.addEventListener("change", () => {
+        KeyClashFX.setMuted(els.settingsMute.checked);
+        toast(els.settingsMute.checked ? "Sound muted" : "Sound on");
+        if (!els.settingsMute.checked) {
+          try {
+            KeyClashFX.SFX.test();
+          } catch (_) {}
+        }
+      });
+    }
+
+    if (els.settingsVolume) {
+      let volToastTimer = null;
+      const applyVolume = (preview) => {
+        const pct = Number(els.settingsVolume.value);
+        // Dragging the slider while muted → unmute so users can calibrate easily
+        if (els.settingsMute && els.settingsMute.checked && pct > 0) {
+          KeyClashFX.setMuted(false);
+        }
+        KeyClashFX.setVolumePercent(pct);
+        if (!preview) {
+          if (volToastTimer) clearTimeout(volToastTimer);
+          volToastTimer = setTimeout(() => {
+            toast(
+              pct <= 0
+                ? "Volume 0% (silent)"
+                : "Volume " + KeyClashFX.getVolumePercent() + "%"
+            );
+          }, 280);
+        }
+      };
+      els.settingsVolume.addEventListener("input", () => applyVolume(true));
+      els.settingsVolume.addEventListener("change", () => {
+        applyVolume(false);
+        if (Number(els.settingsVolume.value) > 0 && !KeyClashFX.isMuted()) {
+          try {
+            KeyClashFX.SFX.click();
+          } catch (_) {}
+        }
+      });
+    }
+
+    if (els.settingsKeySfx) {
+      els.settingsKeySfx.addEventListener("change", () => {
+        KeyClashFX.setKeySfx(els.settingsKeySfx.checked);
+        toast(els.settingsKeySfx.checked ? "Key sounds on" : "Key sounds off");
+        if (els.settingsKeySfx.checked) {
+          try {
+            KeyClashFX.SFX.key();
+          } catch (_) {}
+        }
+      });
+    }
+
+    if (els.btnSettingsTest) {
+      els.btnSettingsTest.addEventListener("click", () => {
+        if (KeyClashFX.isMuted()) {
+          toast("Unmute or raise volume to hear the test", true);
+          return;
+        }
+        try {
+          KeyClashFX.SFX.test();
+          toast("Test sound · " + KeyClashFX.getVolumePercent() + "%");
+        } catch (_) {
+          toast("Could not play sound", true);
+        }
+      });
+    }
+  }
+
+  // Legacy mute button (if still in DOM)
+  if (els.btnMute && window.KeyClashFX) {
+    els.btnMute.addEventListener("click", () => {
+      const nowMuted = KeyClashFX.toggleMute();
+      toast(nowMuted ? "Sound muted" : "Sound on");
+      if (!nowMuted) {
+        try {
+          KeyClashFX.SFX.click();
+        } catch (_) {}
+      }
+    });
+  }
+
+  // Keep settings language in sync on load
+  setLangSegActive(els.settingsLanguage, state.language);
+
+  // ---- How to play: remember collapsed state ----
+  if (els.howToPlay) {
+    try {
+      if (localStorage.getItem(HOWTO_KEY) === "1") {
+        els.howToPlay.open = false;
+      } else {
+        els.howToPlay.open = true;
+      }
+    } catch (_) {
+      els.howToPlay.open = true;
+    }
+    els.howToPlay.addEventListener("toggle", () => {
+      try {
+        localStorage.setItem(HOWTO_KEY, els.howToPlay.open ? "0" : "1");
+      } catch (_) {}
+    });
+  }
+
+  // ---- Recent rooms: join / clear ----
+  if (els.recentRoomsList) {
+    els.recentRoomsList.addEventListener("click", (e) => {
+      const btn = e.target.closest(".recent-join-btn");
+      if (!btn) return;
+      const code = (btn.getAttribute("data-code") || "").toUpperCase();
+      if (!code) return;
+      if (els.code) els.code.value = code;
+      showHomeError("");
+      joinRoom(code);
+    });
+  }
+  if (els.btnClearRecent) {
+    els.btnClearRecent.addEventListener("click", clearRecentRooms);
+  }
+
+  // ---- Mobile keyboard: keep type input visible ----
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", syncVisualViewport);
+    window.visualViewport.addEventListener("scroll", syncVisualViewport);
+  }
+  window.addEventListener("resize", syncVisualViewport);
+  window.addEventListener("orientationchange", () => setTimeout(syncVisualViewport, 200));
+
+  if (els.typeInput) {
+    els.typeInput.addEventListener("focus", () => focusTypeDock(els.typeInput));
+  }
+  if (els.practiceInput) {
+    els.practiceInput.addEventListener("focus", () => focusTypeDock(els.practiceInput));
   }
 
   // ---- Home ad slot (non-intrusive; hide-able for this browser session) ----

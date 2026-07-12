@@ -14,7 +14,7 @@ Open **http://localhost:3000**
 ## Features
 
 - **Multiplayer rooms** (max 10) with host controls, ready, chat, reconnect
-- **Languages:** English **or** Tagalog (not mixed)
+- **Languages:** English, Tagalog, Spanish, Indonesian, Japanese (romaji), Portuguese, French, German (not mixed)
 - **Difficulty:** Easy / Normal / Hard
 - **Game modes**
   - **Classic** — finish the passage first
@@ -22,6 +22,7 @@ Open **http://localhost:3000**
   - **Timed 60s** — type as far as you can
   - **Sudden Death** — one mistake and you’re out
 - **Practice Solo** (same language/mode/difficulty)
+- **Find 1v1 Opponent** — online random matchmaking (real player, not ghost)
 - **Leaderboard** — server + this-device personal best
 - **Deploy-ready** — see [DEPLOY.md](./DEPLOY.md)
 

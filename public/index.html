@@ -38,6 +38,98 @@
 
     <div id="toast-root" class="toast-root" aria-live="polite"></div>
 
+    <!-- Global settings (language + sound) -->
+    <button id="btn-settings" class="settings-fab" type="button" aria-label="Settings" title="Settings">
+      <span class="settings-fab-icon" aria-hidden="true">⚙</span>
+      <span class="settings-sound-dot" hidden aria-hidden="true"></span>
+    </button>
+
+    <!-- Settings modal -->
+    <div id="settings-modal" class="settings-modal" hidden>
+      <div class="settings-modal-card glass" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <button type="button" class="settings-modal-close btn btn-ghost btn-xs" id="btn-settings-close">Close</button>
+        <h2 id="settings-title">Settings</h2>
+        <p class="field-hint settings-lead">Language &amp; sound — saved on this device</p>
+
+        <section class="settings-section">
+          <h3 class="settings-section-title">Sound</h3>
+
+          <div class="settings-row">
+            <div class="settings-row-text">
+              <strong>Mute all</strong>
+              <span class="field-hint">Silence every SFX instantly</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="settings-mute" />
+              <span class="switch-slider" aria-hidden="true"></span>
+              <span class="visually-hidden">Mute all sounds</span>
+            </label>
+          </div>
+
+          <div class="settings-row settings-row-stack">
+            <div class="settings-row-head">
+              <strong>Volume</strong>
+              <span id="settings-volume-label" class="settings-volume-value">70%</span>
+            </div>
+            <div class="settings-volume-wrap">
+              <span class="settings-vol-icon" aria-hidden="true">🔈</span>
+              <div class="settings-range-track">
+                <div id="settings-volume-fill" class="settings-range-fill"></div>
+                <input
+                  id="settings-volume"
+                  class="settings-range"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value="70"
+                  aria-label="Master volume"
+                />
+              </div>
+              <span class="settings-vol-icon" aria-hidden="true">🔊</span>
+            </div>
+            <p class="field-hint">Drag to lower or raise countdown, keys, and win sounds</p>
+          </div>
+
+          <div class="settings-row">
+            <div class="settings-row-text">
+              <strong>Key click sounds</strong>
+              <span class="field-hint">Soft beep while typing</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="settings-key-sfx" checked />
+              <span class="switch-slider" aria-hidden="true"></span>
+              <span class="visually-hidden">Key click sounds</span>
+            </label>
+          </div>
+
+          <button type="button" class="btn btn-secondary btn-sm settings-test-btn" id="btn-settings-test-sound">
+            Test sound
+          </button>
+        </section>
+
+        <section class="settings-section">
+          <h3 class="settings-section-title">Race language</h3>
+          <p class="field-hint">Default text language for new rooms &amp; practice (not mixed).</p>
+          <div class="seg seg-lang" id="settings-language" role="group" aria-label="Default race language">
+            <button type="button" class="seg-btn active" data-lang="en">English</button>
+            <button type="button" class="seg-btn" data-lang="tl">Tagalog</button>
+            <button type="button" class="seg-btn" data-lang="es">Spanish</button>
+            <button type="button" class="seg-btn" data-lang="id">Indonesian</button>
+            <button type="button" class="seg-btn" data-lang="ja">Japanese</button>
+            <button type="button" class="seg-btn" data-lang="pt">Portuguese</button>
+            <button type="button" class="seg-btn" data-lang="fr">French</button>
+            <button type="button" class="seg-btn" data-lang="de">German</button>
+          </div>
+          <p class="field-hint">Japanese uses romaji. Host can still change language in the lobby.</p>
+        </section>
+
+        <div class="settings-footer">
+          <button type="button" class="btn btn-primary" id="btn-settings-done">Done</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Cold start / connecting -->
     <div id="connecting-overlay" class="connecting-overlay" hidden>
       <div class="connecting-card glass">
@@ -47,6 +139,20 @@
           Free host may take 30–60 seconds to wake up. Please wait — do not close this tab.
         </p>
         <p class="connecting-sub" id="connecting-timer">0s</p>
+      </div>
+    </div>
+
+    <!-- Online 1v1 matchmaking -->
+    <div id="match-overlay" class="match-overlay" hidden>
+      <div class="match-card glass">
+        <div class="match-spinner" aria-hidden="true"></div>
+        <h2 id="match-title">Finding opponent…</h2>
+        <p id="match-msg" class="match-msg">
+          Looking for a real player for a 1v1 race (not a ghost).
+        </p>
+        <p class="match-sub" id="match-detail">Language · Difficulty · Mode</p>
+        <p class="match-timer" id="match-timer">0s</p>
+        <button type="button" class="btn btn-secondary" id="btn-match-cancel">Cancel search</button>
       </div>
     </div>
 
@@ -77,6 +183,19 @@
         </header>
 
         <div class="home-card glass">
+          <details class="how-to" id="how-to-play">
+            <summary class="how-to-summary">
+              <span class="how-to-title">How to play</span>
+              <span class="how-to-chevron" aria-hidden="true">▸</span>
+            </summary>
+            <ol class="how-to-steps">
+              <li><span class="how-step-num">1</span><div><strong>Create</strong> a room (or enter a code to <strong>Join</strong>).</div></li>
+              <li><span class="how-step-num">2</span><div><strong>Share</strong> the invite link / room code with friends.</div></li>
+              <li><span class="how-step-num">3</span><div>Everyone taps <strong>Ready</strong> in the lobby.</div></li>
+              <li><span class="how-step-num">4</span><div>Host starts the <strong>Race</strong> — type fast &amp; clean for the crown.</div></li>
+            </ol>
+          </details>
+
           <label class="field">
             <span>Your name</span>
             <input id="input-name" type="text" maxlength="16" placeholder="Enter racer name" autocomplete="nickname" />
@@ -84,10 +203,17 @@
 
           <label class="field">
             <span>Language</span>
-            <div class="seg seg-2" id="home-language" role="group" aria-label="Language">
+            <div class="seg seg-lang" id="home-language" role="group" aria-label="Language">
               <button type="button" class="seg-btn active" data-lang="en">English</button>
               <button type="button" class="seg-btn" data-lang="tl">Tagalog</button>
+              <button type="button" class="seg-btn" data-lang="es">Spanish</button>
+              <button type="button" class="seg-btn" data-lang="id">Indonesian</button>
+              <button type="button" class="seg-btn" data-lang="ja">Japanese</button>
+              <button type="button" class="seg-btn" data-lang="pt">Portuguese</button>
+              <button type="button" class="seg-btn" data-lang="fr">French</button>
+              <button type="button" class="seg-btn" data-lang="de">German</button>
             </div>
+            <p class="field-hint">Race text language (not mixed). Japanese uses romaji.</p>
           </label>
 
           <label class="field">
@@ -138,6 +264,12 @@
           </label>
 
           <div class="home-actions">
+            <button id="btn-match" class="btn btn-match btn-lg" type="button" title="Find a real online player for 1v1">
+              Find 1v1 Opponent
+            </button>
+            <p class="field-hint match-hint">
+              Online random match — real player, 1v1 only (uses your language / difficulty / mode).
+            </p>
             <button id="btn-create" class="btn btn-primary btn-lg" type="button">Create Room</button>
             <button id="btn-practice" class="btn btn-secondary btn-lg" type="button">Practice Solo</button>
             <div class="divider"><span>or join</span></div>
@@ -146,6 +278,15 @@
               <button id="btn-join" class="btn btn-secondary btn-lg" type="button">Join</button>
             </div>
             <p id="home-error" class="form-error" hidden></p>
+          </div>
+
+          <div id="recent-rooms" class="recent-rooms" hidden>
+            <div class="recent-rooms-head">
+              <strong>Recent rooms</strong>
+              <button type="button" id="btn-clear-recent" class="btn btn-ghost btn-xs">Clear</button>
+            </div>
+            <p class="field-hint recent-rooms-hint">One-tap rejoin · saved on this device</p>
+            <ul id="recent-rooms-list" class="recent-rooms-list"></ul>
           </div>
 
           <div id="reconnect-banner" class="reconnect-banner" hidden>
@@ -161,9 +302,9 @@
 
           <ul class="feature-pills">
             <li>7 game modes</li>
-            <li>EN or Tagalog</li>
+            <li>8 languages</li>
+            <li>1v1 matchmaking</li>
             <li>Leaderboard</li>
-            <li>Deploy-ready</li>
           </ul>
 
           <div class="share-help glass">
@@ -301,18 +442,21 @@
             </div>
 
             <div id="practice-passage" class="passage"></div>
-            <input
-              id="practice-input"
-              class="type-input"
-              type="text"
-              autocomplete="off"
-              autocorrect="off"
-              autocapitalize="off"
-              spellcheck="false"
-              placeholder="Type here…"
-              disabled
-            />
-            <div class="input-hint" id="practice-input-hint">Solo practice — no lobby needed</div>
+            <div class="type-dock">
+              <input
+                id="practice-input"
+                class="type-input"
+                type="text"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                spellcheck="false"
+                enterkeyhint="done"
+                placeholder="Type here…"
+                disabled
+              />
+              <div class="input-hint" id="practice-input-hint">Solo practice — no lobby needed</div>
+            </div>
           </div>
         </main>
       </div>
@@ -381,9 +525,15 @@
             </div>
             <label class="field field-compact" id="lang-field">
               <span>Language</span>
-              <div class="seg seg-sm seg-2" id="room-language" role="group" aria-label="Room language">
-                <button type="button" class="seg-btn active" data-lang="en">EN</button>
-                <button type="button" class="seg-btn" data-lang="tl">TL</button>
+              <div class="seg seg-sm seg-lang" id="room-language" role="group" aria-label="Room language">
+                <button type="button" class="seg-btn active" data-lang="en" title="English">EN</button>
+                <button type="button" class="seg-btn" data-lang="tl" title="Tagalog">TL</button>
+                <button type="button" class="seg-btn" data-lang="es" title="Spanish">ES</button>
+                <button type="button" class="seg-btn" data-lang="id" title="Indonesian">ID</button>
+                <button type="button" class="seg-btn" data-lang="ja" title="Japanese (romaji)">JA</button>
+                <button type="button" class="seg-btn" data-lang="pt" title="Portuguese">PT</button>
+                <button type="button" class="seg-btn" data-lang="fr" title="French">FR</button>
+                <button type="button" class="seg-btn" data-lang="de" title="German">DE</button>
               </div>
             </label>
             <label class="field field-compact" id="diff-field">
@@ -486,6 +636,8 @@
                 autocorrect="off"
                 autocapitalize="off"
                 spellcheck="false"
+                enterkeyhint="done"
+                inputmode="text"
                 placeholder="Waiting for race to start..."
                 disabled
               />

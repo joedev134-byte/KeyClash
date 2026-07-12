@@ -36,10 +36,15 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3000;
 const MAX_PLAYERS = 10;
+const QUICK_MATCH_MAX = 2;
 const COUNTDOWN_MS = 3000;
 const RACE_TIMEOUT_MS = 120000;
 const TIMED_MS = 60000;
 const RECONNECT_GRACE_MS = 60000;
+const QUICK_MATCH_AUTOSTART_MS = 2200;
+
+/** Online 1v1 queue: socketId → { socket, name, language, difficulty, mode, paragraphs, category, joinedAt } */
+const matchQueue = new Map();
 
 app.use(express.json({ limit: "32kb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -253,9 +258,140 @@ function roomSnapshot(room) {
     seriesChampionId: room.seriesChampionId || null,
     teams,
     players: [...room.players.values()].map(publicPlayer),
-    maxPlayers: MAX_PLAYERS,
+    maxPlayers: room.maxPlayers || MAX_PLAYERS,
+    quickMatch: !!room.quickMatch,
     reconnectGraceMs: RECONNECT_GRACE_MS,
   };
+}
+
+function normalizeQuickMatchMode(mode) {
+  const m = normalizeMode(mode);
+  // Ghost/team need special setups — 1v1 random uses race modes only
+  if (m === "ghost" || m === "team") return "classic";
+  return m;
+}
+
+function leaveMatchQueue(socketId) {
+  if (matchQueue.has(socketId)) {
+    matchQueue.delete(socketId);
+    return true;
+  }
+  return false;
+}
+
+function findQueueMatch(entry) {
+  let best = null;
+  let bestScore = -1;
+  for (const [id, other] of matchQueue) {
+    if (id === entry.socketId) continue;
+    if (!other.socket || !other.socket.connected) {
+      matchQueue.delete(id);
+      continue;
+    }
+    // Same language required for a fair typing race
+    if (other.language !== entry.language) continue;
+    let score = 10;
+    if (other.difficulty === entry.difficulty) score += 5;
+    if (other.mode === entry.mode) score += 3;
+    if (other.category === entry.category) score += 1;
+    if (score > bestScore) {
+      bestScore = score;
+      best = other;
+    }
+  }
+  return best;
+}
+
+function createQuickMatchRoom(entryA, entryB) {
+  const code = generateCode();
+  const language = entryA.language;
+  const difficulty =
+    entryA.difficulty === entryB.difficulty ? entryA.difficulty : "normal";
+  const mode = entryA.mode === entryB.mode ? entryA.mode : "classic";
+  const paragraphs = Math.max(entryA.paragraphs || 1, entryB.paragraphs || 1);
+  const category =
+    entryA.category === entryB.category ? entryA.category : "all";
+
+  const playerA = createPlayer(entryA.socketId, entryA.name, COLORS[0], true, null);
+  const playerB = createPlayer(entryB.socketId, entryB.name, COLORS[1], false, null);
+  // Both ready — race auto-starts shortly
+  playerA.ready = true;
+  playerB.ready = true;
+
+  const room = {
+    code,
+    players: new Map([
+      [entryA.socketId, playerA],
+      [entryB.socketId, playerB],
+    ]),
+    status: "lobby",
+    hostId: entryA.socketId,
+    difficulty,
+    language,
+    mode,
+    paragraphs: normalizeParagraphs(paragraphs),
+    category: normalizeCategory(category),
+    passage: "",
+    raceStart: null,
+    raceDurationMs: RACE_TIMEOUT_MS,
+    countdownTimer: null,
+    raceTimer: null,
+    round: 1,
+    seriesRace: 0,
+    seriesComplete: false,
+    seriesChampionId: null,
+    maxPlayers: QUICK_MATCH_MAX,
+    quickMatch: true,
+  };
+
+  rooms.set(code, room);
+
+  const sockA = entryA.socket;
+  const sockB = entryB.socket;
+
+  sockA.join(code);
+  sockB.join(code);
+  sockA.data.roomCode = code;
+  sockB.data.roomCode = code;
+
+  const snap = roomSnapshot(room);
+  const payloadA = {
+    ok: true,
+    room: snap,
+    session: sessionPayload(room, playerA),
+    opponent: publicPlayer(playerB),
+  };
+  const payloadB = {
+    ok: true,
+    room: snap,
+    session: sessionPayload(room, playerB),
+    opponent: publicPlayer(playerA),
+  };
+
+  sockA.emit("match:found", payloadA);
+  sockB.emit("match:found", payloadB);
+
+  emitRoom(room);
+
+  // Auto-start 1v1 after a short “found!” moment
+  setTimeout(() => {
+    if (!rooms.has(code)) return;
+    const r = rooms.get(code);
+    if (!r || !r.quickMatch) return;
+    if (r.status !== "lobby") return;
+    if (activePlayers(r).length < 2) return;
+    startCountdown(r);
+  }, QUICK_MATCH_AUTOSTART_MS);
+
+  return room;
+}
+
+function tryPairFromQueue(entry) {
+  const other = findQueueMatch(entry);
+  if (!other) return null;
+  matchQueue.delete(entry.socketId);
+  matchQueue.delete(other.socketId);
+  return createQuickMatchRoom(entry, other);
 }
 
 function emitRoom(room) {
@@ -688,6 +824,8 @@ io.on("connection", (socket) => {
         true,
         modeNorm === "team" ? "A" : null
       );
+      leaveMatchQueue(socket.id);
+
       const room = {
         code,
         players: new Map([[socket.id, player]]),
@@ -707,6 +845,8 @@ io.on("connection", (socket) => {
         seriesRace: 0,
         seriesComplete: false,
         seriesChampionId: null,
+        maxPlayers: MAX_PLAYERS,
+        quickMatch: false,
       };
 
       rooms.set(code, room);
@@ -732,8 +872,91 @@ io.on("connection", (socket) => {
     }
   });
 
+  /** Online 1v1 — find a random real opponent (not a ghost). */
+  socket.on("match:find", (payload, cb) => {
+    try {
+      leaveMatchQueue(socket.id);
+
+      // Leave any current room first
+      if (socket.data.roomCode) {
+        const existing = rooms.get(socket.data.roomCode);
+        if (existing) removePlayerFromRoom(existing, socket.id, "left");
+        socket.leave(socket.data.roomCode);
+        socket.data.roomCode = null;
+      }
+
+      const entry = {
+        socketId: socket.id,
+        socket,
+        name: sanitizeName(payload && payload.name),
+        language: normalizeLanguage(payload && payload.language),
+        difficulty: normalizeDifficulty(payload && payload.difficulty),
+        mode: normalizeQuickMatchMode(payload && payload.mode),
+        paragraphs: normalizeParagraphs(payload && payload.paragraphs),
+        category: normalizeCategory(payload && payload.category),
+        joinedAt: Date.now(),
+      };
+
+      const paired = tryPairFromQueue(entry);
+      if (paired) {
+        if (typeof cb === "function") {
+          cb({
+            ok: true,
+            status: "matched",
+            room: roomSnapshot(paired),
+            queueSize: matchQueue.size,
+          });
+        }
+        return;
+      }
+
+      matchQueue.set(socket.id, entry);
+      if (typeof cb === "function") {
+        cb({
+          ok: true,
+          status: "searching",
+          message: "Searching for a 1v1 opponent…",
+          language: entry.language,
+          difficulty: entry.difficulty,
+          mode: entry.mode,
+          queueSize: matchQueue.size,
+        });
+      }
+      socket.emit("match:searching", {
+        language: entry.language,
+        difficulty: entry.difficulty,
+        mode: entry.mode,
+        queueSize: matchQueue.size,
+      });
+    } catch {
+      if (typeof cb === "function") {
+        cb({
+          ok: false,
+          error: "Could not start matchmaking. Try again.",
+          code: "MATCH_FAILED",
+        });
+      }
+    }
+  });
+
+  socket.on("match:cancel", (_payload, cb) => {
+    const left = leaveMatchQueue(socket.id);
+    if (typeof cb === "function") {
+      cb({
+        ok: true,
+        cancelled: left,
+        queueSize: matchQueue.size,
+      });
+    }
+    if (left) {
+      socket.emit("match:cancelled", { queueSize: matchQueue.size });
+    }
+  });
+
   socket.on("room:join", ({ code, name }, cb) => {
     try {
+      leaveMatchQueue(socket.id);
+
       const checked = validateRoomCode(code);
       if (!checked.ok) {
         if (typeof cb === "function") cb(checked);
@@ -752,11 +975,14 @@ io.on("connection", (socket) => {
         return;
       }
 
-      if (activePlayers(room).length >= MAX_PLAYERS || room.players.size >= MAX_PLAYERS) {
+      const cap = room.maxPlayers || MAX_PLAYERS;
+      if (activePlayers(room).length >= cap || room.players.size >= cap) {
         if (typeof cb === "function") {
           cb({
             ok: false,
-            error: `Room is full (max ${MAX_PLAYERS} players). Try another room.`,
+            error: room.quickMatch
+              ? "This 1v1 match is full."
+              : `Room is full (max ${cap} players). Try another room.`,
             code: "ROOM_FULL",
           });
         }
@@ -1213,6 +1439,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("room:leave", (cb) => {
+    leaveMatchQueue(socket.id);
     const code = socket.data.roomCode;
     if (!code) {
       if (typeof cb === "function") cb({ ok: true });
@@ -1226,6 +1453,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
+    leaveMatchQueue(socket.id);
     const code = socket.data.roomCode;
     if (!code) return;
     const room = rooms.get(code);
