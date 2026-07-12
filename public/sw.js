@@ -1,5 +1,5 @@
 /* KeyClash service worker — offline shell for Add to Home Screen */
-const CACHE = "keyclash-shell-v1";
+const CACHE = "keyclash-shell-v2";
 const PRECACHE = [
   "/",
   "/index.html",
@@ -8,9 +8,13 @@ const PRECACHE = [
   "/js/effects.js",
   "/js/charts.js",
   "/favicon.svg",
+  "/favicon-32.png",
+  "/favicon-192.png",
   "/manifest.webmanifest",
+  "/icons/icon.svg",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
+  "/icons/apple-touch-icon.png",
 ];
 
 self.addEventListener("install", (event) => {

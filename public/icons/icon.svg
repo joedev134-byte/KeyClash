@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="KeyClash">
+  <defs>
+    <linearGradient id="clash" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f5d4"/>
+      <stop offset="50%" stop-color="#f72585"/>
+      <stop offset="100%" stop-color="#ffd60a"/>
+    </linearGradient>
+    <linearGradient id="key" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#e8ecff"/>
+      <stop offset="100%" stop-color="#a8b0d8"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="1.2" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- dark key base -->
+  <rect x="1" y="1" width="30" height="30" rx="7" fill="#07070f"/>
+  <rect x="2.2" y="2.2" width="27.6" height="27.6" rx="6" fill="#0d0d1a" stroke="url(#clash)" stroke-width="1.4"/>
+  <!-- stylized K -->
+  <g filter="url(#glow)" transform="translate(0.5 0)">
+    <path
+      d="M9.2 7.2h3.1v7.05l5.35-7.05h3.85l-6.15 7.7 6.55 9.9h-3.95l-4.65-7.2-1 1.25V24.8H9.2V7.2z"
+      fill="url(#key)"
+    />
+    <path
+      d="M18.6 16.4h3.2l4.1 8.4h-3.35l-3.95-8.4z"
+      fill="url(#clash)"
+    />
+  </g>
+</svg>
