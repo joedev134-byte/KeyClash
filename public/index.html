@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>KeyClash — Multiplayer Typing Race</title>
+    <meta name="description" content="Neon multiplayer typing race for up to 10 players. Create a room, invite friends, clash for the crown." />
+    <meta name="theme-color" content="#07070f" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="bg-grid" aria-hidden="true"></div>
+    <div class="bg-orbs" aria-hidden="true">
+      <span class="orb orb-a"></span>
+      <span class="orb orb-b"></span>
+      <span class="orb orb-c"></span>
+    </div>
+    <canvas id="fx-canvas" aria-hidden="true"></canvas>
+    <div id="win-burst" class="win-burst" hidden aria-hidden="true">
+      <div class="win-burst-inner">
+        <div class="win-crown">👑</div>
+        <div class="win-burst-title" id="win-burst-title">VICTORY</div>
+        <div class="win-burst-sub" id="win-burst-sub">1st Place</div>
+      </div>
+    </div>
+
+    <div id="toast-root" class="toast-root" aria-live="polite"></div>
+
+    <!-- HOME -->
+    <section id="screen-home" class="screen active">
+      <div class="home-shell">
+        <header class="brand">
+          <div class="brand-badge">ONLINE · UP TO 10 PLAYERS</div>
+          <h1 class="logo">
+            <span class="logo-key">KEY</span><span class="logo-clash">CLASH</span>
+          </h1>
+          <p class="tagline">Type fast. Type clean. Take the crown.</p>
+        </header>
+
+        <div class="home-card glass">
+          <label class="field">
+            <span>Your name</span>
+            <input id="input-name" type="text" maxlength="16" placeholder="Enter racer name" autocomplete="nickname" />
+          </label>
+
+          <label class="field">
+            <span>Language</span>
+            <div class="seg seg-2" id="home-language" role="group" aria-label="Language">
+              <button type="button" class="seg-btn active" data-lang="en">English</button>
+              <button type="button" class="seg-btn" data-lang="tl">Tagalog</button>
+            </div>
+          </label>
+
+          <label class="field">
+            <span>Difficulty</span>
+            <div class="seg" id="home-difficulty" role="group" aria-label="Difficulty">
+              <button type="button" class="seg-btn" data-diff="easy">Easy</button>
+              <button type="button" class="seg-btn active" data-diff="normal">Normal</button>
+              <button type="button" class="seg-btn" data-diff="hard">Hard</button>
+            </div>
+          </label>
+
+          <label class="field">
+            <span>Paragraphs</span>
+            <div class="seg seg-5" id="home-paragraphs" role="group" aria-label="Number of paragraphs">
+              <button type="button" class="seg-btn active" data-paragraphs="1">1</button>
+              <button type="button" class="seg-btn" data-paragraphs="2">2</button>
+              <button type="button" class="seg-btn" data-paragraphs="3">3</button>
+              <button type="button" class="seg-btn" data-paragraphs="4">4</button>
+              <button type="button" class="seg-btn" data-paragraphs="5">5</button>
+            </div>
+            <p class="field-hint">Paragraphs / word packs (1–5). Words mode = 25 words each pack.</p>
+          </label>
+
+          <label class="field">
+            <span>Game mode</span>
+            <div class="seg seg-mode" id="home-mode" role="group" aria-label="Game mode">
+              <button type="button" class="seg-btn active" data-mode="classic" title="Finish the passage first">Classic</button>
+              <button type="button" class="seg-btn" data-mode="best_of_3" title="First to 2 race wins">Best of 3</button>
+              <button type="button" class="seg-btn" data-mode="timed" title="60 second sprint">Timed 60s</button>
+              <button type="button" class="seg-btn" data-mode="sudden_death" title="One error and you are out">Sudden Death</button>
+              <button type="button" class="seg-btn" data-mode="ghost" title="Race your last WPM ghost">Ghost</button>
+              <button type="button" class="seg-btn" data-mode="team" title="Team 2v2 averages">Team 2v2</button>
+              <button type="button" class="seg-btn" data-mode="words" title="Random words">Words</button>
+            </div>
+            <p class="field-hint" id="mode-hint">Finish the passage first. Clean and fast.</p>
+          </label>
+
+          <div class="home-actions">
+            <button id="btn-create" class="btn btn-primary btn-lg" type="button">Create Room</button>
+            <button id="btn-practice" class="btn btn-secondary btn-lg" type="button">Practice Solo</button>
+            <div class="divider"><span>or join</span></div>
+            <div class="join-row">
+              <input id="input-code" type="text" maxlength="5" placeholder="ROOM" autocomplete="off" class="code-input" inputmode="text" />
+              <button id="btn-join" class="btn btn-secondary btn-lg" type="button">Join</button>
+            </div>
+            <p id="home-error" class="form-error" hidden></p>
+          </div>
+
+          <div id="reconnect-banner" class="reconnect-banner" hidden>
+            <div>
+              <strong>Resume session?</strong>
+              <span id="reconnect-detail">You left a room open.</span>
+            </div>
+            <div class="reconnect-actions">
+              <button id="btn-reconnect" class="btn btn-primary btn-sm" type="button">Reconnect</button>
+              <button id="btn-dismiss-reconnect" class="btn btn-ghost btn-sm" type="button">Dismiss</button>
+            </div>
+          </div>
+
+          <ul class="feature-pills">
+            <li>7 game modes</li>
+            <li>EN or Tagalog</li>
+            <li>Leaderboard</li>
+            <li>Deploy-ready</li>
+          </ul>
+
+          <div class="share-help glass">
+            <strong>Paano mag-share?</strong>
+            <p id="share-help-text">
+              Local muna: friends sa same Wi‑Fi lang. Para sa internet link, i-deploy sa Railway/Render (tingnan DEPLOY.md).
+            </p>
+            <button id="btn-copy-game-url" class="btn btn-secondary btn-sm" type="button">Copy game URL</button>
+          </div>
+        </div>
+
+        <aside class="leaderboard-card glass">
+          <div class="panel-head">
+            <h2>Leaderboard</h2>
+            <button id="btn-refresh-lb" class="btn btn-ghost btn-xs" type="button">Refresh</button>
+          </div>
+          <p class="field-hint lb-hint">Top WPM on this server · also saved on your device</p>
+          <ol id="leaderboard-list" class="leaderboard-list">
+            <li class="lb-empty">No scores yet — race or practice to post one.</li>
+          </ol>
+          <div class="lb-personal" id="lb-personal"></div>
+        </aside>
+
+        <footer class="home-foot">Press keys. Break records. Clash again.</footer>
+      </div>
+    </section>
+
+    <!-- PRACTICE -->
+    <section id="screen-practice" class="screen">
+      <header class="topbar glass">
+        <div class="topbar-left">
+          <div class="mini-logo">KEY<span>CLASH</span></div>
+          <div class="round-chip">
+            Practice · <span id="practice-mode-label">Classic</span> ·
+            <span id="practice-lang-label">English</span> ·
+            <span id="practice-diff-label">Normal</span> ·
+            <span id="practice-para-label">1</span>p
+          </div>
+          <div class="race-timer" id="practice-timer" hidden><span id="practice-timer-val">60.0</span>s</div>
+        </div>
+        <div class="topbar-right">
+          <div id="practice-status" class="status-pill">Solo</div>
+          <button id="btn-practice-exit" class="btn btn-ghost" type="button">Exit</button>
+        </div>
+      </header>
+
+      <div class="practice-layout">
+        <main class="panel arena glass practice-arena">
+          <div id="practice-countdown" class="countdown-overlay" hidden>
+            <div id="practice-countdown-num" class="countdown-num">3</div>
+            <div class="countdown-label">GET READY</div>
+          </div>
+
+          <div id="practice-results" class="results-overlay" hidden>
+            <div class="results-card results-card-wide glass">
+              <h2 class="results-title">Your Practice Result</h2>
+              <div class="personal-stats" id="practice-personal-stats"></div>
+              <div class="chart-wrap">
+                <canvas id="practice-chart" class="race-chart" width="400" height="200" aria-label="Practice race graph"></canvas>
+              </div>
+              <div class="practice-score" id="practice-score" hidden></div>
+              <div class="results-actions">
+                <button id="btn-practice-again" class="btn btn-primary" type="button">Again</button>
+                <button id="btn-practice-home" class="btn btn-secondary" type="button">Home</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="passage-wrap">
+            <div class="stats-row">
+              <div class="stat">
+                <span class="stat-label">WPM</span>
+                <span id="p-stat-wpm" class="stat-value accent">0</span>
+              </div>
+              <div class="stat">
+                <span class="stat-label">Accuracy</span>
+                <span id="p-stat-acc" class="stat-value">100%</span>
+              </div>
+              <div class="stat">
+                <span class="stat-label">Progress</span>
+                <span id="p-stat-prog" class="stat-value">0%</span>
+              </div>
+              <div class="stat">
+                <span class="stat-label">Errors</span>
+                <span id="p-stat-err" class="stat-value danger">0</span>
+              </div>
+            </div>
+
+            <div id="practice-ghost-panel" class="ghost-panel" hidden>
+              <div class="ghost-panel-head">
+                <span>👻 Ghost · <strong id="practice-ghost-wpm">40</strong> WPM</span>
+                <span id="practice-ghost-pct">0%</span>
+              </div>
+              <div class="track ghost-track practice-ghost-track">
+                <div class="track-name" style="color:#b8c0ff">Ghost</div>
+                <div class="track-lane">
+                  <div id="practice-ghost-fill" class="track-fill" style="color:#9b5de5;width:0%"></div>
+                  <div id="practice-ghost-racer" class="track-racer" style="color:#9b5de5;left:0%"></div>
+                </div>
+                <div class="track-wpm" id="practice-ghost-wpm-side">40</div>
+              </div>
+              <div class="track you-track">
+                <div class="track-name" style="color:var(--cyan)">You</div>
+                <div class="track-lane">
+                  <div id="practice-you-fill" class="track-fill" style="color:var(--cyan);width:0%"></div>
+                  <div id="practice-you-racer" class="track-racer" style="color:var(--cyan);left:0%"></div>
+                </div>
+                <div class="track-wpm" id="practice-you-wpm-side">0</div>
+              </div>
+            </div>
+
+            <div id="practice-passage" class="passage"></div>
+            <input
+              id="practice-input"
+              class="type-input"
+              type="text"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
+              placeholder="Type here…"
+              disabled
+            />
+            <div class="input-hint" id="practice-input-hint">Solo practice — no lobby needed</div>
+          </div>
+        </main>
+      </div>
+    </section>
+
+    <!-- LOBBY / GAME -->
+    <section id="screen-game" class="screen">
+      <header class="topbar glass">
+        <div class="topbar-left">
+          <div class="mini-logo">KEY<span>CLASH</span></div>
+          <div class="room-chip">
+            <span class="muted">ROOM</span>
+            <strong id="room-code">-----</strong>
+            <button id="btn-copy" class="btn btn-ghost btn-xs" type="button" title="Copy room code">Code</button>
+            <button id="btn-share" class="btn btn-secondary btn-xs" type="button" title="Copy invite link + room code">Share invite</button>
+          </div>
+          <div class="round-chip">Round <span id="round-num">1</span></div>
+          <div class="round-chip diff-chip">
+            <span id="mode-label">Classic</span> ·
+            <span id="lang-label">English</span> ·
+            <span id="diff-label">Normal</span> ·
+            <span id="para-label">1</span>p
+          </div>
+          <div class="round-chip series-chip" id="series-chip" hidden>
+            Series <span id="series-score">0-0</span>
+          </div>
+          <div class="round-chip team-chip" id="team-score-chip" hidden>
+            A <span id="team-a-score">0%</span> · B <span id="team-b-score">0%</span>
+          </div>
+          <div class="race-timer" id="race-timer" hidden><span id="race-timer-val">60.0</span>s</div>
+        </div>
+        <div class="topbar-right">
+          <div id="status-pill" class="status-pill">Lobby</div>
+          <button id="btn-leave" class="btn btn-ghost" type="button">Leave</button>
+        </div>
+      </header>
+
+      <div class="game-layout">
+        <aside class="panel players-panel glass">
+          <div class="panel-head">
+            <h2>Racers</h2>
+            <span id="player-count" class="count-badge">0/10</span>
+          </div>
+          <ul id="player-list" class="player-list"></ul>
+
+          <div class="host-actions" id="host-actions">
+            <label class="field field-compact">
+              <span>Mode</span>
+              <div class="seg seg-sm seg-mode" id="room-mode" role="group" aria-label="Room mode">
+                <button type="button" class="seg-btn active" data-mode="classic">Classic</button>
+                <button type="button" class="seg-btn" data-mode="best_of_3">Bo3</button>
+                <button type="button" class="seg-btn" data-mode="timed">60s</button>
+                <button type="button" class="seg-btn" data-mode="sudden_death">SD</button>
+                <button type="button" class="seg-btn" data-mode="ghost">Ghost</button>
+                <button type="button" class="seg-btn" data-mode="team">2v2</button>
+                <button type="button" class="seg-btn" data-mode="words">Words</button>
+              </div>
+            </label>
+            <div class="team-pick" id="team-pick" hidden>
+              <span class="field-hint" style="margin:0 0 6px">Your team</span>
+              <div class="seg seg-sm seg-2" id="player-team" role="group" aria-label="Pick team">
+                <button type="button" class="seg-btn" data-team="A">Team A</button>
+                <button type="button" class="seg-btn" data-team="B">Team B</button>
+              </div>
+            </div>
+            <label class="field field-compact" id="lang-field">
+              <span>Language</span>
+              <div class="seg seg-sm seg-2" id="room-language" role="group" aria-label="Room language">
+                <button type="button" class="seg-btn active" data-lang="en">EN</button>
+                <button type="button" class="seg-btn" data-lang="tl">TL</button>
+              </div>
+            </label>
+            <label class="field field-compact" id="diff-field">
+              <span>Difficulty</span>
+              <div class="seg seg-sm" id="room-difficulty" role="group" aria-label="Room difficulty">
+                <button type="button" class="seg-btn" data-diff="easy">Easy</button>
+                <button type="button" class="seg-btn active" data-diff="normal">Normal</button>
+                <button type="button" class="seg-btn" data-diff="hard">Hard</button>
+              </div>
+            </label>
+            <label class="field field-compact">
+              <span>Paragraphs</span>
+              <div class="seg seg-sm seg-5" id="room-paragraphs" role="group" aria-label="Room paragraphs">
+                <button type="button" class="seg-btn active" data-paragraphs="1">1</button>
+                <button type="button" class="seg-btn" data-paragraphs="2">2</button>
+                <button type="button" class="seg-btn" data-paragraphs="3">3</button>
+                <button type="button" class="seg-btn" data-paragraphs="4">4</button>
+                <button type="button" class="seg-btn" data-paragraphs="5">5</button>
+              </div>
+            </label>
+            <button id="btn-ready" class="btn btn-secondary" type="button">Ready</button>
+            <button id="btn-start" class="btn btn-primary btn-pulse" type="button" hidden>Start Race</button>
+            <p id="host-hint" class="host-hint" hidden></p>
+          </div>
+        </aside>
+
+        <main class="panel arena glass">
+          <div id="track-board" class="track-board"></div>
+
+          <div id="game-ghost-banner" class="ghost-banner" hidden>
+            👻 Ghost at <strong id="game-ghost-wpm-label">40</strong> WPM ·
+            You <span id="game-you-vs-ghost">0%</span> vs Ghost <span id="game-ghost-vs-you">0%</span>
+          </div>
+
+          <div id="countdown-overlay" class="countdown-overlay" hidden>
+            <div id="countdown-num" class="countdown-num">3</div>
+            <div class="countdown-label">GET READY</div>
+          </div>
+
+          <div id="results-overlay" class="results-overlay" hidden>
+            <div class="results-card results-card-wide glass">
+              <h2 class="results-title" id="results-title">Race Complete</h2>
+
+              <section class="your-result" id="your-result-block">
+                <h3 class="your-result-heading">Your result</h3>
+                <div class="personal-stats" id="personal-stats"></div>
+                <div class="chart-wrap">
+                  <canvas id="race-chart" class="race-chart" width="400" height="200" aria-label="Your race graph"></canvas>
+                </div>
+                <p class="chart-legend-hint">Pink = WPM · Cyan = progress % over time</p>
+              </section>
+
+              <h3 class="standings-heading">Standings</h3>
+              <ol id="results-list" class="results-list"></ol>
+              <p class="results-hint" id="results-hint">Host can start the next round</p>
+              <div class="results-actions" id="results-actions">
+                <button id="btn-rematch" class="btn btn-primary btn-pulse" type="button" hidden>Next Round</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="passage-wrap">
+            <div class="stats-row">
+              <div class="stat">
+                <span class="stat-label">WPM</span>
+                <span id="stat-wpm" class="stat-value accent">0</span>
+              </div>
+              <div class="stat">
+                <span class="stat-label">Accuracy</span>
+                <span id="stat-acc" class="stat-value">100%</span>
+              </div>
+              <div class="stat">
+                <span class="stat-label">Progress</span>
+                <span id="stat-prog" class="stat-value">0%</span>
+              </div>
+              <div class="stat">
+                <span class="stat-label">Errors</span>
+                <span id="stat-err" class="stat-value danger">0</span>
+              </div>
+            </div>
+
+            <div id="passage" class="passage" aria-live="polite"></div>
+            <div class="type-dock">
+              <input
+                id="type-input"
+                class="type-input"
+                type="text"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                spellcheck="false"
+                placeholder="Waiting for race to start..."
+                disabled
+              />
+              <div class="input-hint" id="input-hint">Host starts the race when everyone is ready</div>
+            </div>
+          </div>
+        </main>
+
+        <aside class="panel chat-panel glass" id="chat-panel">
+          <div class="panel-head">
+            <h2>Chat</h2>
+            <button id="btn-toggle-chat" class="btn btn-ghost btn-xs mobile-only" type="button">Hide</button>
+          </div>
+          <div id="chat-log" class="chat-log"></div>
+          <form id="chat-form" class="chat-form">
+            <input id="chat-input" type="text" maxlength="120" placeholder="Say something..." autocomplete="off" />
+            <button class="btn btn-secondary btn-sm" type="submit">Send</button>
+          </form>
+        </aside>
+      </div>
+    </section>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/effects.js"></script>
+    <script src="/js/charts.js"></script>
+    <script src="/js/client.js"></script>
+  </body>
+</html>

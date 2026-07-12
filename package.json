@@ -1,0 +1,18 @@
+{
+  "name": "keyclash",
+  "version": "1.0.0",
+  "description": "Neon multiplayer typing race — up to 10 players",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "health": "node -e \"fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health').then(r=>r.json()).then(console.log).catch(e=>{console.error(e);process.exit(1)})\""
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}
