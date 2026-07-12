@@ -182,6 +182,7 @@
     practicePersonalStats: document.getElementById("practice-personal-stats"),
     practiceChart: document.getElementById("practice-chart"),
     btnRematch: document.getElementById("btn-rematch"),
+    btnCloseResults: document.getElementById("btn-close-results"),
     chatLog: document.getElementById("chat-log"),
     chatForm: document.getElementById("chat-form"),
     chatInput: document.getElementById("chat-input"),
@@ -1119,6 +1120,10 @@
       els.btnRematch.hidden = !(host && state.room.status === "results");
       els.btnRematch.textContent = els.btnStart.textContent;
     }
+    if (els.btnCloseResults) {
+      // Close is available to everyone when results are open
+      els.btnCloseResults.hidden = state.room.status !== "results";
+    }
 
     const canEdit = host && (state.room.status === "lobby" || state.room.status === "results");
     [els.roomDifficulty, els.roomLanguage, els.roomMode, els.roomParagraphs, els.roomCategory].forEach(
@@ -1587,14 +1592,17 @@
       els.yourResultBlock.hidden = true;
     }
 
+    if (els.btnCloseResults) els.btnCloseResults.hidden = false;
+
     if (isHost()) {
       els.resultsHint.textContent =
         room.mode === "best_of_3" && !room.seriesComplete
-          ? "Series continues — Next Round"
-          : "Press Next Round to clash again";
+          ? "Series continues — Next Round, or Close to return to lobby"
+          : "Press Next Round to clash again, or Close for lobby";
       if (els.btnRematch) els.btnRematch.hidden = false;
     } else {
-      els.resultsHint.textContent = "Waiting for host to start the next round…";
+      els.resultsHint.textContent =
+        "Waiting for host to start the next round — or Close to view lobby";
       if (els.btnRematch) els.btnRematch.hidden = true;
     }
 
@@ -2192,6 +2200,27 @@
   }
   els.btnStart.addEventListener("click", requestStart);
   if (els.btnRematch) els.btnRematch.addEventListener("click", requestStart);
+
+  if (els.btnCloseResults) {
+    els.btnCloseResults.addEventListener("click", () => {
+      // Dismiss results panel and return to lobby UI (room stays in results until host starts)
+      if (els.resultsOverlay) els.resultsOverlay.hidden = true;
+      if (state.room) {
+        // Soft lobby view: keep stats, allow chat / ready / host controls
+        setStatus(state.room.status === "results" ? "results" : "lobby");
+        if (els.statusPill && state.room.status === "results") {
+          els.statusPill.textContent = "Lobby";
+          els.statusPill.className = "status-pill";
+        }
+        renderPlayers();
+        renderTracks();
+        els.inputHint.textContent = isHost()
+          ? "Results closed — start Next Round when ready"
+          : "Results closed — waiting for host…";
+      }
+      toast("Results closed");
+    });
+  }
 
   els.btnLeave.addEventListener("click", () => {
     socket.emit("room:leave", () => {

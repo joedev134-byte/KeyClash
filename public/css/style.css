@@ -1755,6 +1755,11 @@ input[type="text"]:focus {
   justify-content: center;
   flex-wrap: wrap;
   margin-top: 16px;
+  align-items: center;
+}
+
+.results-actions .btn {
+  min-width: 120px;
 }
 
 .practice-score {
