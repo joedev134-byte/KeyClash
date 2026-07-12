@@ -428,25 +428,55 @@
           </div>
         </div>
 
-        <!-- Non-intrusive home ad slot (below main actions, never covers Create/Join) -->
+        <!--
+          Home ads — static AdsTerra embed (required: invoke.js uses document.write;
+          dynamic inject after load often shows nothing). Hidden only off-home via ads.js.
+        -->
         <aside
           id="home-ad-slot"
           class="ad-slot glass"
           aria-label="Advertisement"
-          data-ad-slot="home-banner"
+          data-ad-slot="home"
+          data-ad-variant="compact"
         >
           <div class="ad-slot-head">
-            <span class="ad-label">Ad</span>
+            <span class="ad-label">Sponsored</span>
           </div>
           <div id="home-ad-frame" class="ad-slot-frame">
-            <!--
-              Plug AdSense (or any network) here later, e.g.:
-              <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-XXXX" data-ad-slot="YYYY" ...></ins>
-            -->
-            <div class="ad-placeholder">
-              <span class="ad-placeholder-title">Your ad could be here</span>
-              <span class="ad-placeholder-sub">320×50 · mobile banner</span>
-            </div>
+            <!-- AdsTerra 320×50 banner -->
+            <script type="text/javascript">
+              atOptions = {
+                key: "e5c55792e4f5ee42dcdaa596f59ded85",
+                format: "iframe",
+                height: 50,
+                width: 320,
+                params: {},
+              };
+            </script>
+            <script
+              type="text/javascript"
+              src="https://www.highperformanceformat.com/e5c55792e4f5ee42dcdaa596f59ded85/invoke.js"
+            ></script>
+          </div>
+        </aside>
+        <aside
+          id="home-native-ad-slot"
+          class="ad-slot ad-slot-native glass"
+          aria-label="Advertisement"
+          data-ad-slot="home-native"
+          data-ad-variant="native-1x1"
+        >
+          <div class="ad-slot-head">
+            <span class="ad-label">Sponsored</span>
+          </div>
+          <div id="home-native-ad-frame" class="ad-slot-frame ad-slot-frame-native">
+            <!-- AdsTerra 1:1 native widget — container id must match -->
+            <div id="container-d1fd7bf637cecb1b5e88b85c30196b00"></div>
+            <script
+              async="async"
+              data-cfasync="false"
+              src="https://pl30333289.effectivecpmnetwork.com/d1fd7bf637cecb1b5e88b85c30196b00/invoke.js"
+            ></script>
           </div>
         </aside>
 
@@ -521,6 +551,20 @@
                   <button type="button" class="btn btn-ghost btn-sm" id="btn-practice-copy-share">Copy text</button>
                 </div>
               </div>
+              <!-- Compact results ad only (lazy; hidden until key + race done) -->
+              <aside
+                id="practice-results-ad-slot"
+                class="ad-slot ad-slot-results"
+                aria-label="Advertisement"
+                data-ad-slot="practice-results"
+                data-ad-variant="compact"
+                hidden
+              >
+                <div class="ad-slot-head">
+                  <span class="ad-label">Sponsored</span>
+                </div>
+                <div id="practice-results-ad-frame" class="ad-slot-frame"></div>
+              </aside>
               <div class="results-actions">
                 <button id="btn-practice-again" class="btn btn-primary" type="button">Again</button>
                 <button id="btn-practice-home" class="btn btn-secondary" type="button">Home</button>
@@ -735,6 +779,20 @@
 
               <h3 class="standings-heading">Standings</h3>
               <ol id="results-list" class="results-list"></ol>
+              <!-- Compact results ad only (lazy; never during typing) -->
+              <aside
+                id="race-results-ad-slot"
+                class="ad-slot ad-slot-results"
+                aria-label="Advertisement"
+                data-ad-slot="race-results"
+                data-ad-variant="compact"
+                hidden
+              >
+                <div class="ad-slot-head">
+                  <span class="ad-label">Sponsored</span>
+                </div>
+                <div id="race-results-ad-frame" class="ad-slot-frame"></div>
+              </aside>
               <p class="results-hint" id="results-hint">Host can start the next round</p>
               <div class="results-actions" id="results-actions">
                 <button id="btn-rematch" class="btn btn-primary btn-pulse" type="button" hidden>Next Round</button>
@@ -802,6 +860,7 @@
     <script src="/socket.io/socket.io.js"></script>
     <script src="/js/effects.js"></script>
     <script src="/js/charts.js"></script>
+    <script src="/js/ads.js"></script>
     <script src="/js/client.js"></script>
   </body>
 </html>

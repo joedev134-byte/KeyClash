@@ -82,16 +82,21 @@ function securityHeaders(_req, res, next) {
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
-  // Avoid breaking Socket.IO / inline-free app; still block obvious XSS vectors
+  // Allow AdsTerra / ad networks (scripts + iframes) while keeping default locked down.
+  // Without frame-src / external script-src, banners and native widgets never render.
   res.setHeader(
     "Content-Security-Policy",
     [
       "default-src 'self'",
-      "script-src 'self'",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      // App scripts + AdsTerra invoke/hosts (domains rotate; https: covers ad CDNs)
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https:",
       "font-src 'self' https://fonts.gstatic.com data:",
-      "img-src 'self' data: https:",
+      "img-src 'self' data: https: blob:",
       "connect-src 'self' wss: ws: https:",
+      "frame-src 'self' https: about: blob:",
+      "child-src 'self' https: blob:",
+      "media-src 'self' https: blob:",
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",

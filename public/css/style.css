@@ -1908,89 +1908,132 @@ body.is-racing .type-input {
   width: 100%;
 }
 
-/* Home ad slot — below CTAs, never overlays game UI */
+/* Ads — UX-first: quiet chrome, compact by default, no layout jump when hidden.
+   Variants (data-ad-variant from ads.js):
+   - compact → 320×50 (results always; home on mobile)
+   - rect    → 300×250 (home on desktop only)
+   Empty / no key → [hidden] so the game UI is undisturbed.
+*/
 .ad-slot {
   width: var(--home-width, min(440px, 100%));
-  margin: 0 auto;
-  border-radius: 14px;
-  padding: 10px 12px 12px;
-  border: 1px dashed rgba(255, 255, 255, 0.12);
+  margin: 12px auto 0;
+  border-radius: 12px;
+  padding: 6px 10px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   box-sizing: border-box;
-  background: rgba(12, 14, 28, 0.55);
+  background: rgba(12, 14, 28, 0.35);
 }
 
-.ad-slot[hidden] {
+.ad-slot[hidden],
+.ad-slot[data-ad-empty="1"] {
   display: none !important;
+}
+
+/* Results: thin strip, doesn’t steal focus from score / rematch */
+.ad-slot-results {
+  width: 100%;
+  max-width: 340px;
+  margin: 10px auto 6px;
+  padding: 4px 8px 6px;
+  background: rgba(8, 10, 22, 0.4);
+  border-color: rgba(255, 255, 255, 0.05);
 }
 
 .ad-slot-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
+  justify-content: flex-start;
+  margin-bottom: 4px;
 }
 
 .ad-label {
-  font-size: 0.65rem;
-  letter-spacing: 0.16em;
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
   font-weight: 600;
-  opacity: 0.85;
+  opacity: 0.55;
 }
 
 .ad-slot-frame {
-  /* Fits 320×50 mobile banner (and similar thin units) */
-  min-height: 50px;
-  max-height: 60px;
-  width: 100%;
-  max-width: 320px;
   margin: 0 auto;
   display: grid;
   place-items: center;
-  border-radius: 10px;
+  border-radius: 8px;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.25);
+  background: transparent;
+  box-sizing: border-box;
+  width: 320px;
+  max-width: 100%;
+  height: 50px;
+  min-height: 50px;
+  max-height: 50px;
 }
 
-/* Real ad network units should stay inside this box */
-.ad-slot-frame ins,
-.ad-slot-frame iframe,
-.ad-slot-frame > * {
-  max-width: 320px;
+.ad-slot[data-ad-variant="compact"] .ad-slot-frame {
+  width: 320px;
+  height: 50px;
+  min-height: 50px;
   max-height: 50px;
+}
+
+.ad-slot[data-ad-variant="rect"] .ad-slot-frame {
+  width: 300px;
+  height: 250px;
+  min-height: 250px;
+  max-height: 250px;
+}
+
+/* AdsTerra native 1:1 widget */
+.ad-slot-native {
+  max-width: min(320px, 100%);
+}
+
+.ad-slot[data-ad-variant="native-1x1"] .ad-slot-frame,
+.ad-slot-frame-native {
+  width: min(300px, 100%);
+  height: auto;
+  min-height: 250px;
+  max-height: none;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+}
+
+.ad-slot[data-ad-variant="native-1x1"] .ad-slot-frame > div,
+.ad-slot-frame-native > div {
+  width: 100% !important;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.ad-slot-frame iframe,
+.ad-slot-frame ins {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  margin: 0 auto;
+  border: 0;
+}
+
+.ad-slot[data-ad-variant="compact"] .ad-slot-frame iframe,
+.ad-slot[data-ad-variant="compact"] .ad-slot-frame ins {
   width: 320px;
   height: 50px;
 }
 
-.ad-placeholder {
-  display: grid;
-  gap: 2px;
-  text-align: center;
-  padding: 8px 10px;
-  color: var(--muted);
-}
-
-.ad-placeholder-title {
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: rgba(232, 236, 255, 0.55);
-}
-
-.ad-placeholder-sub {
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
-  opacity: 0.75;
+.ad-slot[data-ad-variant="rect"] .ad-slot-frame iframe,
+.ad-slot[data-ad-variant="rect"] .ad-slot-frame ins {
+  width: 300px;
+  height: 250px;
 }
 
 @media (max-width: 520px) {
   .ad-slot {
     width: 100%;
   }
-  .ad-slot-frame {
-    min-height: 50px;
-    max-height: 50px;
-    max-width: min(320px, 100%);
+  .ad-slot-results {
+    width: 100%;
+    max-width: 100%;
   }
 }
 

@@ -1,5 +1,5 @@
 /* KeyClash service worker — offline shell for Add to Home Screen */
-const CACHE = "keyclash-shell-v2";
+const CACHE = "keyclash-shell-v9";
 const PRECACHE = [
   "/",
   "/index.html",
@@ -7,6 +7,7 @@ const PRECACHE = [
   "/js/client.js",
   "/js/effects.js",
   "/js/charts.js",
+  "/js/ads.js",
   "/favicon.svg",
   "/favicon-32.png",
   "/favicon-192.png",

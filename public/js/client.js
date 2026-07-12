@@ -409,10 +409,16 @@
       stopLeaderboardHomePoll();
       stopLiveStatusPoll();
     }
-    // Keep ad on home only — never during lobby/race/practice
+    // Home ad only on home — never during lobby/race/practice/typing
     try {
-      const ad = document.getElementById("home-ad-slot");
-      if (ad) ad.hidden = which !== "home";
+      if (window.KeyClashAds && typeof KeyClashAds.setHomeVisible === "function") {
+        KeyClashAds.setHomeVisible(which === "home");
+      } else {
+        const ad = document.getElementById("home-ad-slot");
+        if (ad && ad.getAttribute("data-ad-empty") !== "1") {
+          ad.hidden = which !== "home";
+        }
+      }
     } catch (_) {}
   }
 
@@ -1902,6 +1908,11 @@
   function showResults(room) {
     state.resultsShownForRound = `${room.code}-${room.round}-${room.seriesRace || 0}`;
     els.resultsOverlay.hidden = false;
+    try {
+      if (window.KeyClashAds && typeof KeyClashAds.load === "function") {
+        KeyClashAds.load("race-results");
+      }
+    } catch (_) {}
     stopGhostTimer();
     const sorted = [...room.players].sort((a, b) => (a.place || 99) - (b.place || 99));
     const winner = sorted[0];
@@ -2892,6 +2903,11 @@
     });
 
     els.practiceResults.hidden = false;
+    try {
+      if (window.KeyClashAds && typeof KeyClashAds.load === "function") {
+        KeyClashAds.load("practice-results");
+      }
+    } catch (_) {}
     els.practiceStatus.textContent = "Done";
     els.practiceStatus.className = "status-pill results";
 
@@ -4365,11 +4381,17 @@
     els.practiceInput.addEventListener("blur", () => setTimeout(syncVisualViewport, 150));
   }
 
-  // ---- Home ad slot (shown on home only; not hideable by user) ----
-  const homeAd = document.getElementById("home-ad-slot");
-  if (homeAd) {
-    homeAd.hidden = state.modeScreen !== "home";
-  }
+  // ---- Home ad (home only; ads.js hides if no key) ----
+  try {
+    if (window.KeyClashAds && typeof KeyClashAds.setHomeVisible === "function") {
+      KeyClashAds.setHomeVisible(state.modeScreen === "home");
+    } else {
+      const ad = document.getElementById("home-ad-slot");
+      if (ad && ad.getAttribute("data-ad-empty") !== "1") {
+        ad.hidden = state.modeScreen !== "home";
+      }
+    }
+  } catch (_) {}
 
   // ---- PWA: service worker + install card (always on home bottom unless already installed) ----
   function isStandalonePwa() {
