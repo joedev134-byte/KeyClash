@@ -4371,7 +4371,55 @@
     homeAd.hidden = state.modeScreen !== "home";
   }
 
-  // ---- PWA: service worker + install prompt ----
+  // ---- PWA: service worker + install card (always on home bottom unless already installed) ----
+  function isStandalonePwa() {
+    try {
+      return (
+        window.matchMedia("(display-mode: standalone)").matches ||
+        window.navigator.standalone === true
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function isIosDevice() {
+    return (
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+    );
+  }
+
+  function updatePwaInstallCard() {
+    if (!els.pwaInstallCard) return;
+    // Hide only when already running as installed app
+    if (isStandalonePwa()) {
+      els.pwaInstallCard.hidden = true;
+      return;
+    }
+    els.pwaInstallCard.hidden = false;
+    const hint = document.getElementById("pwa-install-hint");
+    if (state.deferredPwaPrompt) {
+      if (els.btnPwaInstall) els.btnPwaInstall.textContent = "Install app";
+      if (hint) {
+        hint.textContent =
+          "Add to Home Screen for faster access — works like an app.";
+      }
+    } else if (isIosDevice()) {
+      if (els.btnPwaInstall) els.btnPwaInstall.textContent = "How to install";
+      if (hint) {
+        hint.textContent =
+          "iPhone/iPad: tap Share → Add to Home Screen for an app icon.";
+      }
+    } else {
+      if (els.btnPwaInstall) els.btnPwaInstall.textContent = "Install app";
+      if (hint) {
+        hint.textContent =
+          "Add to Home Screen (browser menu → Install app) for faster access.";
+      }
+    }
+  }
+
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
@@ -4381,7 +4429,7 @@
   window.addEventListener("beforeinstallprompt", (e) => {
     e.preventDefault();
     state.deferredPwaPrompt = e;
-    if (els.pwaInstallCard) els.pwaInstallCard.hidden = false;
+    updatePwaInstallCard();
   });
 
   window.addEventListener("appinstalled", () => {
@@ -4401,40 +4449,17 @@
           }
         } catch (_) {}
         state.deferredPwaPrompt = null;
-        if (els.pwaInstallCard) els.pwaInstallCard.hidden = true;
+        updatePwaInstallCard();
         return;
       }
-      // iOS / browsers without beforeinstallprompt
-      const isIOS =
-        /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-      if (isIOS) {
+      if (isIosDevice()) {
         toast("On iPhone: Share → Add to Home Screen");
       } else {
-        toast("Use browser menu → Install app / Add to Home Screen");
+        toast("Browser menu → Install app / Add to Home Screen");
       }
     });
   }
 
-  // Show install tip card on mobile even without deferred prompt
-  try {
-    const standalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      window.navigator.standalone === true;
-    if (
-      !standalone &&
-      els.pwaInstallCard &&
-      /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
-    ) {
-      // Keep hidden until beforeinstallprompt, except show soft tip after delay on iOS
-      if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-        setTimeout(() => {
-          if (!state.deferredPwaPrompt && els.pwaInstallCard && state.modeScreen === "home") {
-            els.pwaInstallCard.hidden = false;
-            if (els.btnPwaInstall) els.btnPwaInstall.textContent = "How to install";
-          }
-        }, 4000);
-      }
-    }
-  } catch (_) {}
+  // Always show install card at bottom of home (unless already a PWA)
+  updatePwaInstallCard();
 })();
