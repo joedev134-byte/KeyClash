@@ -1266,12 +1266,31 @@
       if (i < caret) cls += "correct";
       else if (i === caret) cls += typedWrong ? "incorrect current" : "current";
       else cls += "upcoming";
-      const ch = text[i] === " " ? "&nbsp;" : escapeHtml(text[i]);
+      // Keep real spaces (with white-space: pre-wrap) so words wrap cleanly
+      // instead of &nbsp; which prevented wrapping and caused cut-off.
+      const raw = text[i];
+      const ch =
+        raw === "<"
+          ? "&lt;"
+          : raw === ">"
+            ? "&gt;"
+            : raw === "&"
+              ? "&amp;"
+              : raw === '"'
+                ? "&quot;"
+                : raw;
       html += `<span class="${cls}">${ch}</span>`;
     }
     el.innerHTML = html;
     const cur = el.querySelector(".char.current");
-    if (cur) cur.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (cur) {
+      // Keep caret visible without horizontal jump off-screen
+      try {
+        cur.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+      } catch (_) {
+        cur.scrollIntoView(false);
+      }
+    }
   }
 
   function renderPassage() {
@@ -1392,7 +1411,16 @@
     state.room = room;
     state.myId = socket.id;
     els.roomCode.textContent = room.code;
-    els.roundNum.textContent = String(room.round || 1);
+    // Round works for every mode
+    const round = Math.max(1, room.round || 1);
+    els.roundNum.textContent = String(round);
+    if (els.roundNum && els.roundNum.parentElement) {
+      const label =
+        room.mode === "best_of_3"
+          ? `Round ${round}${room.seriesRace ? ` · Series ${room.seriesRace}/3` : ""}`
+          : `Round ${round}`;
+      els.roundNum.parentElement.title = label;
+    }
     state.difficulty = room.difficulty || state.difficulty;
     state.language = room.language || state.language;
     state.mode = room.mode || state.mode;
@@ -1729,10 +1757,33 @@
       .replace(/"/g, "&quot;");
   }
 
+  /** Client-side mirror of server censor (so local echo is clean too). */
+  function censorClient(text) {
+    const list = [
+      "fuck", "fucker", "fucking", "shit", "shitty", "bitch", "asshole", "bastard",
+      "dick", "cock", "pussy", "cunt", "slut", "whore", "nigger", "nigga", "faggot",
+      "retard", "motherfucker", "bullshit", "dumbass", "jackass",
+      "putangina", "puta", "punyeta", "gago", "gaga", "tangina", "ulol", "tarantado",
+      "leche", "lintik", "pakyu", "pakyo", "bobo", "tanga", "inutil", "pokpok",
+      "kantot", "jakol", "bayag", "puke", "titi", "burat", "kupal",
+    ].sort((a, b) => b.length - a.length);
+    let out = String(text || "");
+    for (const w of list) {
+      const re = new RegExp(`(?<![a-zA-Z])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-zA-Z])`, "gi");
+      out = out.replace(re, (m) => "*".repeat(m.length));
+    }
+    // multi-word
+    out = out.replace(/putang\s*ina/gi, (m) => "*".repeat(m.length));
+    out = out.replace(/tang\s*ina/gi, (m) => "*".repeat(m.length));
+    out = out.replace(/hayop\s*ka/gi, (m) => "*".repeat(m.length));
+    return out;
+  }
+
   function appendChat({ name, color, text }) {
     const div = document.createElement("div");
     div.className = "chat-msg";
-    div.innerHTML = `<span class="who" style="color:${color}">${escapeHtml(name)}</span><span class="txt">${escapeHtml(text)}</span>`;
+    const safeText = censorClient(text);
+    div.innerHTML = `<span class="who" style="color:${color}">${escapeHtml(name)}</span><span class="txt">${escapeHtml(safeText)}</span>`;
     els.chatLog.appendChild(div);
     els.chatLog.scrollTop = els.chatLog.scrollHeight;
   }
@@ -2381,6 +2432,7 @@
     e.preventDefault();
     const text = els.chatInput.value.trim();
     if (!text) return;
+    // Send raw; server censors. Local display uses censored form via room broadcast.
     socket.emit("chat:message", { text });
     els.chatInput.value = "";
   });
@@ -2571,13 +2623,18 @@
   });
 
   socket.on("race:countdown", (payload) => {
-    const { duration, endsAt, serverNow, passage, raceDurationMs, snapshot } = payload || {};
+    const { duration, endsAt, serverNow, passage, raceDurationMs, snapshot, round } =
+      payload || {};
     if (snapshot) {
       state.room = snapshot;
       state.myId = socket.id;
+      if (round != null) state.room.round = round;
       renderPlayers();
       renderTracks();
       setStatus("countdown");
+    }
+    if (round != null && els.roundNum) {
+      els.roundNum.textContent = String(Math.max(1, round));
     }
     state.passage = normalizeTypingText(passage || (snapshot && snapshot.passage) || "");
     state.caret = 0;

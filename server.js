@@ -21,6 +21,7 @@ const {
   MAX_PARAGRAPHS,
 } = require("./passages");
 const leaderboard = require("./leaderboard");
+const { censorText } = require("./censor");
 
 const app = express();
 const server = http.createServer(app);
@@ -547,7 +548,10 @@ function startCountdown(room) {
     raceDurationMs: room.raceDurationMs,
     snapshot: roomSnapshot(room),
   };
-  io.to(room.code).emit("race:countdown", countdownPayload);
+  io.to(room.code).emit("race:countdown", {
+    ...countdownPayload,
+    round: room.round,
+  });
   emitRoom(room);
 
   room.countdownTimer = setTimeout(() => {
@@ -570,10 +574,12 @@ function startCountdown(room) {
 }
 
 function sanitizeName(name) {
-  return String(name || "")
+  const cleaned = String(name || "")
     .trim()
     .slice(0, 16)
-    .replace(/[<>]/g, "") || "Racer";
+    .replace(/[<>]/g, "");
+  const censored = censorText(cleaned);
+  return censored || "Racer";
 }
 
 function validateRoomCode(code) {
@@ -940,25 +946,17 @@ io.on("connection", (socket) => {
     const room = rooms.get(socket.data.roomCode);
     if (!assertHostLobby(room, socket, cb)) return;
     room.mode = normalizeMode(mode);
-    // Reset series when mode changes
+    // Reset round + series for every mode change so Round is correct in all modes
+    room.round = 1;
     room.seriesRace = 0;
     room.seriesComplete = false;
     room.seriesChampionId = null;
     [...room.players.values()].forEach((p) => {
       p.seriesWins = 0;
-      if (room.mode === "team") {
-        p.team = null;
-      } else {
-        p.team = null;
-      }
+      p.team = null;
     });
     // Rebalance teams if switching to team mode
     if (room.mode === "team") {
-      [...room.players.values()].forEach((p) => {
-        p.team = assignTeam(room);
-        // assignTeam counts already-assigned; set after so we need sequential
-      });
-      // Clean rebalance
       const list = [...room.players.values()];
       list.forEach((p, i) => {
         p.team = i % 2 === 0 ? "A" : "B";
@@ -970,6 +968,7 @@ io.on("connection", (socket) => {
         ok: true,
         mode: room.mode,
         modeLabel: MODES[room.mode].label,
+        round: room.round,
       });
     }
   });
@@ -1077,21 +1076,27 @@ io.on("connection", (socket) => {
       }
     }
 
+    // Round counter works for ALL modes (Classic, Timed, SD, Ghost, Team, Words, Bo3)
     if (room.status === "results") {
-      room.round += 1;
-      // If series complete in Bo3, start fresh series
       if (room.mode === "best_of_3" && room.seriesComplete) {
+        // New Bo3 series starts at round 1
+        room.round = 1;
         room.seriesRace = 0;
         room.seriesComplete = false;
         room.seriesChampionId = null;
         [...room.players.values()].forEach((p) => {
           p.seriesWins = 0;
         });
+      } else {
+        room.round = Math.max(1, (room.round || 1) + 1);
       }
       room.status = "lobby";
+    } else if (room.status === "lobby") {
+      // Ensure valid round even on first start
+      room.round = Math.max(1, room.round || 1);
     }
     startCountdown(room);
-    if (typeof cb === "function") cb({ ok: true });
+    if (typeof cb === "function") cb({ ok: true, round: room.round, mode: room.mode });
   });
 
   socket.on("race:progress", (payload) => {
@@ -1192,10 +1197,12 @@ io.on("connection", (socket) => {
     if (!room) return;
     const player = room.players.get(socket.id);
     if (!player || player.disconnected) return;
-    const clean = String(text || "")
+    const raw = String(text || "")
       .trim()
       .slice(0, 120);
-    if (!clean) return;
+    if (!raw) return;
+    // Asterisk filter for bad words (EN + common TL)
+    const clean = censorText(raw);
     io.to(room.code).emit("chat:message", {
       id: player.id,
       name: player.name,

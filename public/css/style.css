@@ -651,6 +651,12 @@ input[type="text"]:focus {
   flex-direction: column;
   gap: 14px;
   overflow: hidden;
+  min-width: 0; /* prevent flex children from overflowing / cutting text */
+  max-width: 100%;
+}
+
+.game-layout {
+  min-width: 0;
 }
 
 .track-board {
@@ -738,6 +744,9 @@ input[type="text"]:focus {
   flex-direction: column;
   gap: 12px;
   min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .stats-row {
@@ -779,23 +788,37 @@ input[type="text"]:focus {
 }
 
 .passage {
-  flex: 1;
+  flex: 1 1 auto;
   font-family: var(--font-mono);
-  font-size: clamp(1rem, 1.5vw, 1.2rem);
-  line-height: 1.85;
+  font-size: clamp(0.95rem, 1.4vw, 1.15rem);
+  line-height: 1.9;
   letter-spacing: 0.01em;
-  padding: 18px;
+  padding: 16px 18px;
   border-radius: 14px;
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  overflow: auto;
-  min-height: 140px;
-  word-break: break-word;
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-height: 120px;
+  max-height: min(48vh, 420px);
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  /* Wrap at word edges — avoid mid-word cut / horizontal clip */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: normal;
+  hyphens: none;
 }
 
 .passage .char {
+  display: inline;
   border-radius: 3px;
   transition: background 0.05s, color 0.05s;
+  white-space: pre-wrap;
+  /* Keep spaces from collapsing / clipping */
+  word-break: normal;
 }
 
 .passage .char.correct {
@@ -1935,18 +1958,29 @@ input[type="text"]:focus {
   }
 
   .passage {
-    font-size: 1rem;
-    min-height: 120px;
-    padding: 14px;
-    line-height: 1.7;
+    font-size: 0.95rem;
+    min-height: 100px;
+    max-height: 38vh;
+    padding: 12px 14px;
+    line-height: 1.75;
+  }
+
+  .passage-wrap {
+    padding-bottom: 4px;
   }
 
   .type-dock {
     position: sticky;
     bottom: 0;
+    flex-shrink: 0;
+    padding-top: 6px;
     padding-bottom: env(safe-area-inset-bottom, 0);
-    background: linear-gradient(180deg, transparent, rgba(7, 7, 15, 0.95) 30%);
+    background: linear-gradient(180deg, transparent, rgba(7, 7, 15, 0.98) 28%);
     z-index: 5;
+  }
+
+  .arena {
+    overflow: hidden;
   }
 
   .type-input {
