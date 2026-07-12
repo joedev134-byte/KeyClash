@@ -145,15 +145,28 @@ button {
 
 /* Screens */
 .screen {
-  display: none;
+  display: none !important;
   position: relative;
   z-index: 1;
   min-height: 100vh;
 }
 
 .screen.active {
-  display: block;
+  display: block !important;
   animation: fadeIn 0.45s ease;
+}
+
+/* Never show home under the game (PVP / race) */
+body.on-game #screen-home,
+body.on-practice #screen-home {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+body.on-game #match-overlay[hidden],
+body.is-racing #match-overlay {
+  display: none !important;
 }
 
 @keyframes fadeIn {
@@ -534,11 +547,81 @@ input[type="text"]:focus {
 
 /* Game layout */
 #screen-game.active {
-  display: flex;
+  display: flex !important;
   flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
+  height: auto;
   padding: 14px;
   gap: 12px;
+  box-sizing: border-box;
+}
+
+#screen-game.active .game-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* During race: focus on passage + typing (hide lobby controls) */
+body.is-racing .host-actions,
+body.is-racing #host-actions {
+  display: none !important;
+}
+
+body.is-racing .chat-panel {
+  display: none !important;
+}
+
+body.is-racing .players-panel {
+  max-height: none;
+}
+
+body.is-racing .player-list {
+  max-height: 96px;
+}
+
+body.is-racing .arena {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+body.is-racing .passage-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+body.is-racing .passage {
+  flex: 1 1 auto;
+  min-height: 160px;
+  max-height: none;
+  overflow-y: auto;
+}
+
+body.is-racing .type-dock {
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 25;
+  margin-top: 8px;
+  padding-top: 10px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(
+    180deg,
+    rgba(7, 7, 15, 0) 0%,
+    rgba(7, 7, 15, 0.94) 28%,
+    rgba(7, 7, 15, 0.99) 100%
+  );
+}
+
+body.is-racing .type-input {
+  min-height: 48px;
+  font-size: 16px !important;
+  border: 1px solid rgba(0, 245, 212, 0.45);
+  box-shadow: 0 0 0 3px rgba(0, 245, 212, 0.12);
 }
 
 .topbar {
@@ -2708,6 +2791,17 @@ body.settings-open {
 
 .match-overlay[hidden] {
   display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* Settings gear shouldn't cover type input on race */
+body.is-racing .settings-fab {
+  top: auto;
+  bottom: max(72px, env(safe-area-inset-bottom, 0px));
+  opacity: 0.55;
+  width: 40px;
+  height: 40px;
 }
 
 .match-card {
@@ -3165,8 +3259,11 @@ body.settings-open {
   #screen-game.active {
     min-height: var(--vvh, 100dvh);
     max-height: var(--vvh, 100dvh);
+    height: var(--vvh, 100dvh);
     overflow: hidden;
+    padding: 8px;
     padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    gap: 8px;
   }
 
   .game-layout {
@@ -3175,6 +3272,9 @@ body.settings-open {
     overflow: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .host-actions .btn,
@@ -3185,9 +3285,10 @@ body.settings-open {
   }
 
   .passage {
-    max-height: min(34vh, 280px);
-    font-size: 1rem;
-    line-height: 1.7;
+    max-height: min(40vh, 320px);
+    min-height: 120px;
+    font-size: 1.05rem;
+    line-height: 1.75;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
   }
@@ -3203,6 +3304,7 @@ body.settings-open {
       rgba(7, 7, 15, 0.92) 22%,
       rgba(7, 7, 15, 0.98) 100%
     );
+    z-index: 30;
   }
 
   .type-input,
@@ -3213,12 +3315,14 @@ body.settings-open {
   }
 
   .track-board {
-    max-height: 120px;
+    max-height: 100px;
     overflow-y: auto;
+    flex-shrink: 0;
   }
 
   .players-panel {
     order: 2;
+    flex-shrink: 0;
   }
 
   .chat-panel {
@@ -3227,12 +3331,110 @@ body.settings-open {
 
   .arena {
     order: 1;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Race mode on mobile: typing surface fills the screen */
+  body.is-racing #screen-game.active {
+    overflow: hidden;
+  }
+
+  body.is-racing .game-layout {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  body.is-racing .players-panel {
+    order: 0;
+    max-height: 72px;
+    overflow: hidden;
+    padding: 8px 10px;
+  }
+
+  body.is-racing .player-list {
+    max-height: 48px;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 6px;
+    overflow-x: auto;
+  }
+
+  body.is-racing .player-list .player-item {
+    flex: 0 0 auto;
+    min-width: 120px;
+  }
+
+  body.is-racing .chat-panel,
+  body.is-racing .host-actions {
+    display: none !important;
+  }
+
+  body.is-racing .arena {
+    order: 1;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  body.is-racing .track-board {
+    max-height: 56px;
+    flex-shrink: 0;
+  }
+
+  body.is-racing .passage-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  body.is-racing .passage {
+    flex: 1 1 auto;
+    min-height: 140px;
+    max-height: none;
+    font-size: 1.08rem;
+    line-height: 1.7;
+  }
+
+  body.is-racing .stats-row {
+    flex-shrink: 0;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+  }
+
+  body.is-racing .stat {
+    padding: 6px 4px;
+  }
+
+  body.is-racing .stat-value {
+    font-size: 0.95rem;
+  }
+
+  body.is-racing .type-dock {
+    position: relative;
+    flex-shrink: 0;
+    z-index: 40;
+  }
+
+  body.is-racing .topbar {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+
+  body.is-racing .topbar .diff-chip,
+  body.is-racing .topbar .round-chip:not(.series-chip):not(.team-chip) {
+    display: none;
   }
 
   /* Soft keyboard open: prioritize typing surface */
   body.keyboard-open .players-panel,
-  body.keyboard-open .chat-panel {
-    display: none;
+  body.keyboard-open .chat-panel,
+  body.is-racing.keyboard-open .players-panel {
+    display: none !important;
   }
 
   body.keyboard-open .topbar .round-chip:not(.series-chip):not(.team-chip),
@@ -3240,13 +3442,16 @@ body.settings-open {
     display: none;
   }
 
-  body.keyboard-open .track-board {
-    max-height: 72px;
+  body.keyboard-open .track-board,
+  body.is-racing.keyboard-open .track-board {
+    max-height: 48px;
   }
 
-  body.keyboard-open .passage {
-    max-height: min(28vh, 200px);
-    min-height: 80px;
+  body.keyboard-open .passage,
+  body.is-racing.keyboard-open .passage {
+    min-height: 100px;
+    max-height: none;
+    flex: 1 1 auto;
   }
 
   body.keyboard-open .stats-row {
@@ -3274,7 +3479,7 @@ body.settings-open {
     min-height: var(--vvh, 100dvh);
     max-height: var(--vvh, 100dvh);
     overflow: hidden;
-    display: flex;
+    display: flex !important;
     flex-direction: column;
     padding: 8px;
     gap: 8px;

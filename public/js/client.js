@@ -373,6 +373,21 @@
     els.home.classList.toggle("active", which === "home");
     els.game.classList.toggle("active", which === "game");
     els.practice.classList.toggle("active", which === "practice");
+    // Body flags for layout (race focus, hide home chrome)
+    document.body.classList.toggle("on-home", which === "home");
+    document.body.classList.toggle("on-game", which === "game");
+    document.body.classList.toggle("on-practice", which === "practice");
+    if (which !== "game" && which !== "practice") {
+      document.body.classList.remove("is-racing", "keyboard-open");
+    }
+    // Always leave home fully when entering game/practice
+    if (which === "game" || which === "practice") {
+      try {
+        window.scrollTo(0, 0);
+      } catch (_) {}
+      hideMatchOverlay();
+      if (els.connectingOverlay) els.connectingOverlay.hidden = true;
+    }
     if (which === "home") {
       updateReconnectBanner();
       renderRecentRooms();
@@ -383,7 +398,7 @@
       refreshStatsStrip();
       startLeaderboardHomePoll();
       startLiveStatusPoll();
-      document.body.classList.remove("keyboard-open");
+      document.body.classList.remove("keyboard-open", "is-racing");
     } else {
       stopLeaderboardHomePoll();
       stopLiveStatusPoll();
@@ -1136,6 +1151,27 @@
     const [label, cls] = map[status] || ["Lobby", ""];
     els.statusPill.textContent = label;
     els.statusPill.className = "status-pill" + (cls ? " " + cls : "");
+    // Race focus layout: hide lobby chrome so passage + input stay visible
+    const racing = status === "racing" || status === "countdown";
+    document.body.classList.toggle("is-racing", racing);
+    document.body.classList.toggle("is-results", status === "results");
+    if (racing) {
+      try {
+        window.scrollTo(0, 0);
+      } catch (_) {}
+      // Ensure type dock / passage not covered
+      requestAnimationFrame(() => {
+        try {
+          if (els.passage) {
+            els.passage.scrollTop = 0;
+          }
+          if (status === "racing" && els.typeInput && !els.typeInput.disabled) {
+            els.typeInput.focus({ preventScroll: false });
+            focusTypeDock(els.typeInput);
+          }
+        } catch (_) {}
+      });
+    }
   }
 
   function stopUiTimer() {
@@ -1945,6 +1981,12 @@
 
   function beginRace(raceStart, passage, raceDurationMs) {
     cancelCountdown();
+    // Always ensure game screen is visible (not home under match overlay)
+    hideMatchOverlay();
+    if (state.modeScreen !== "game") showScreen("game");
+    document.body.classList.add("is-racing", "on-game");
+    document.body.classList.remove("on-home");
+
     state.racing = true;
     state.raceStart = raceStart || Date.now();
     state.raceDurationMs = raceDurationMs || state.raceDurationMs || 120000;
@@ -1972,7 +2014,19 @@
     setStatus("racing");
     renderPassage();
     resetStatsDisplay();
-    els.typeInput.focus();
+    // Focus typing surface after layout paints
+    requestAnimationFrame(() => {
+      try {
+        window.scrollTo(0, 0);
+        if (els.passage) els.passage.scrollTop = 0;
+        els.typeInput.focus();
+        focusTypeDock(els.typeInput);
+      } catch (_) {
+        try {
+          els.typeInput.focus();
+        } catch (__) {}
+      }
+    });
     if (m === "timed") startUiTimer(state.raceStart, state.raceDurationMs);
     else stopUiTimer();
     if (m === "ghost") startGhostRace();
@@ -2805,6 +2859,7 @@
   });
 
   function enterGame(room, session) {
+    hideMatchOverlay();
     if (session) saveSession(session);
     if (room && room.code) {
       pushRecentRoom(room.code, {
@@ -2814,6 +2869,10 @@
     }
     applyRoom(room);
     showScreen("game");
+    // If race already running (rejoin / quick-match), force race layout
+    if (room && (room.status === "racing" || room.status === "countdown")) {
+      document.body.classList.add("is-racing");
+    }
     KeyClashFX.SFX.join();
     showHomeError("");
   }
@@ -2881,7 +2940,10 @@
   }
 
   function hideMatchOverlay() {
-    if (els.matchOverlay) els.matchOverlay.hidden = true;
+    if (els.matchOverlay) {
+      els.matchOverlay.hidden = true;
+      els.matchOverlay.setAttribute("aria-hidden", "true");
+    }
     setMatchFallbackVisible(false);
     stopMatchTimer();
     state.matchmaking = false;
