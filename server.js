@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const fs = require("fs");
 const express = require("express");
 const http = require("http");
 const path = require("path");
@@ -22,7 +23,13 @@ const {
 } = require("./passages");
 const leaderboard = require("./leaderboard");
 const analytics = require("./analytics");
+const daily = require("./daily");
 const { censorText } = require("./censor");
+
+/** Competitive WPM ceiling (multiplayer / 1v1). */
+const MAX_RACE_WPM = 220;
+/** Max characters accepted per second of elapsed time (~264 WPM theoretical). */
+const MAX_CHARS_PER_SEC = 22;
 
 const app = express();
 const server = http.createServer(app);
@@ -50,17 +57,41 @@ const MATCH_SOFT_LANG_MS = 15000;
 const matchQueue = new Map();
 
 app.use(express.json({ limit: "32kb" }));
+
+/** Inject absolute OG image URLs so Discord/FB previews work. */
+app.get(["/", "/index.html"], (req, res) => {
+  try {
+    const indexPath = path.join(__dirname, "public", "index.html");
+    let html = fs.readFileSync(indexPath, "utf8");
+    const proto = (req.get("x-forwarded-proto") || req.protocol || "https").split(",")[0].trim();
+    const host = req.get("x-forwarded-host") || req.get("host") || "localhost";
+    const origin = proto + "://" + host;
+    const ogImage = origin + "/og-image.svg";
+    html = html
+      .replace(/__OG_URL__/g, origin + "/")
+      .replace(/__OG_IMAGE__/g, ogImage);
+    res.type("html").send(html);
+  } catch (e) {
+    res.sendFile(path.join(__dirname, "public", "index.html"));
+  }
+});
+
 app.use(express.static(path.join(__dirname, "public")));
 
 app.get("/api/health", (_req, res) => {
   try {
     analytics.trackHealthPing();
   } catch (_) {}
+  const online =
+    (io.engine && io.engine.clientsCount) ||
+    (io.sockets && io.sockets.sockets && io.sockets.sockets.size) ||
+    0;
   res.json({
     ok: true,
     service: "keyclash",
     rooms: rooms.size,
     queue: matchQueue.size,
+    online: online,
     uptimeSec: Math.floor(process.uptime()),
   });
 });
@@ -69,6 +100,27 @@ app.get("/api/health", (_req, res) => {
 app.get("/api/stats", (_req, res) => {
   res.set("Cache-Control", "no-store");
   res.json(analytics.getPublicStats());
+});
+
+app.get("/api/daily", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const challenge = daily.getDailyPassage(req.query.language);
+  const board = daily.getBoard(req.query.language, req.query.limit);
+  res.json({ ...challenge, board: board.entries, boardMeta: board });
+});
+
+app.get("/api/daily/board", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(daily.getBoard(req.query.language, req.query.limit));
+});
+
+app.post("/api/daily", (req, res) => {
+  const result = daily.submitDaily(req.body || {});
+  if (!result.ok) {
+    res.status(400).json(result);
+    return;
+  }
+  res.json(result);
 });
 
 app.get("/api/difficulties", (_req, res) => {
@@ -825,6 +877,44 @@ function scheduleDisconnect(room, player) {
   clearPlayerGrace(player);
   player.disconnected = true;
   player.ready = false;
+
+  // 1v1 mid-race disconnect = forfeit (fairness)
+  if (
+    room.quickMatch &&
+    room.status === "racing" &&
+    !player.finished &&
+    !player.eliminated
+  ) {
+    const elapsedMs = Math.max(1, Date.now() - (room.raceStart || Date.now()));
+    player.eliminated = true;
+    player.finished = true;
+    player.finishTime = elapsedMs;
+    player.progress = player.progress || 0;
+    rankFinishers(room);
+    io.to(room.code).emit("player:forfeit", {
+      id: player.id,
+      name: player.name,
+      reason: "disconnect",
+    });
+    io.to(room.code).emit("player:eliminated", {
+      id: player.id,
+      name: player.name,
+      correct: player.correct || 0,
+      progress: player.progress || 0,
+      forfeit: true,
+    });
+    emitRoom(room);
+    maybeEndRace(room);
+    // Still remove after short grace so reconnect can't rejoin mid-forfeit race
+    player.graceTimer = setTimeout(() => {
+      if (!rooms.has(room.code)) return;
+      const still = room.players.get(player.id);
+      if (!still || !still.disconnected) return;
+      removePlayerFromRoom(room, player.id, "forfeit");
+    }, 8000);
+    return;
+  }
+
   player.graceTimer = setTimeout(() => {
     if (!rooms.has(room.code)) return;
     const still = room.players.get(player.id);
@@ -1486,9 +1576,32 @@ io.on("connection", (socket) => {
 
     let correct = Math.max(0, Math.min(Number(payload.correct) || 0, room.passage.length));
     let errors = Math.max(0, Math.min(Number(payload.errors) || 0, 9999));
-    const elapsedMs = Math.max(1, Date.now() - (room.raceStart || Date.now()));
+    // Never allow progress to go backwards
+    if (correct < (player.correct || 0)) correct = player.correct || 0;
+
+    const now = Date.now();
+    const elapsedMs = Math.max(1, now - (room.raceStart || now));
+    // Rate-limit character jumps (blocks paste/bots bursting)
+    const prevAt = player.lastProgressAt || room.raceStart || now;
+    const dtSec = Math.max(0.05, (now - prevAt) / 1000);
+    const delta = correct - (player.correct || 0);
+    const maxDelta = Math.ceil(dtSec * MAX_CHARS_PER_SEC + 4);
+    if (delta > maxDelta) {
+      correct = (player.correct || 0) + maxDelta;
+      correct = Math.min(correct, room.passage.length);
+    }
+    player.lastProgressAt = now;
+
     const minutes = elapsedMs / 60000;
-    let wpm = Math.min(400, Math.round(correct / 5 / minutes));
+    let wpm = Math.min(MAX_RACE_WPM, Math.round(correct / 5 / minutes));
+    // Extra sanity: implied WPM from instantaneous burst
+    if (delta > 0 && dtSec > 0) {
+      const burstWpm = Math.round(delta / 5 / (dtSec / 60));
+      if (burstWpm > MAX_RACE_WPM + 40) {
+        correct = player.correct || 0;
+        wpm = Math.min(MAX_RACE_WPM, player.wpm || 0);
+      }
+    }
     const total = correct + errors;
     let accuracy = total === 0 ? 100 : Math.round((correct / total) * 100);
     let progress = Math.round((correct / room.passage.length) * 100);

@@ -7,9 +7,18 @@
     <meta name="description" content="Neon multiplayer typing race for up to 10 players. Create a room, invite friends, clash for the crown." />
     <meta name="theme-color" content="#07070f" />
     <meta property="og:title" content="KeyClash — Multiplayer Typing Race" />
-    <meta property="og:description" content="Type facts. Race friends. Up to 10 players. No login required." />
+    <meta property="og:description" content="Type facts. Race friends. 1v1 online, 8 languages, daily challenge. No login required." />
     <meta property="og:type" content="website" />
+    <meta property="og:url" content="__OG_URL__" />
+    <meta property="og:image" content="__OG_IMAGE__" />
+    <meta property="og:image:type" content="image/svg+xml" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="KeyClash — neon multiplayer typing race" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="KeyClash — Multiplayer Typing Race" />
+    <meta name="twitter:description" content="Type facts. Race friends. 1v1 online, daily challenge. No login required." />
+    <meta name="twitter:image" content="__OG_IMAGE__" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -197,6 +206,10 @@
       <div class="home-shell">
         <header class="brand">
           <div class="brand-badge">ONLINE · UP TO 10 PLAYERS</div>
+          <p id="live-status" class="live-status" aria-live="polite">
+            <span class="live-dot" aria-hidden="true"></span>
+            <span id="live-status-text">Checking players…</span>
+          </p>
           <h1 class="logo">
             <span class="logo-key">KEY</span><span class="logo-clash">CLASH</span>
           </h1>
@@ -291,6 +304,12 @@
             <p class="field-hint match-hint">
               Online random match — real player, 1v1 only (uses your language / difficulty / mode).
             </p>
+            <button id="btn-daily" class="btn btn-daily btn-lg" type="button" title="Same passage for everyone today">
+              Daily Challenge
+            </button>
+            <p class="field-hint match-hint">
+              One shared passage per day · global board · use your selected language
+            </p>
             <button id="btn-create" class="btn btn-primary btn-lg" type="button">Create Room</button>
             <button id="btn-practice" class="btn btn-secondary btn-lg" type="button">Practice Solo</button>
             <div class="divider"><span>or join</span></div>
@@ -325,8 +344,19 @@
             <li>7 game modes</li>
             <li>8 languages</li>
             <li>1v1 matchmaking</li>
-            <li>Leaderboard</li>
+            <li>Daily challenge</li>
           </ul>
+
+          <aside class="daily-board-card glass" id="daily-board-card">
+            <div class="panel-head">
+              <h2>Daily board</h2>
+              <button id="btn-refresh-daily" class="btn btn-ghost btn-xs" type="button">Refresh</button>
+            </div>
+            <p class="field-hint" id="daily-board-meta">Today’s shared challenge · best WPM</p>
+            <ol id="daily-board-list" class="leaderboard-list">
+              <li class="lb-empty">No daily scores yet — be the first.</li>
+            </ol>
+          </aside>
 
           <div class="share-help glass">
             <strong>Paano mag-share?</strong>
@@ -406,12 +436,19 @@
 
           <div id="practice-results" class="results-overlay" hidden>
             <div class="results-card results-card-wide glass">
-              <h2 class="results-title">Your Practice Result</h2>
+              <h2 class="results-title" id="practice-results-title">Your Practice Result</h2>
               <div class="personal-stats" id="practice-personal-stats"></div>
               <div class="chart-wrap">
                 <canvas id="practice-chart" class="race-chart" width="400" height="200" aria-label="Practice race graph"></canvas>
               </div>
               <div class="practice-score" id="practice-score" hidden></div>
+              <div class="share-card" id="practice-share-card">
+                <p class="share-card-text" id="practice-share-text">I raced on KeyClash — beat me!</p>
+                <div class="share-card-actions">
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-practice-share">Share result</button>
+                  <button type="button" class="btn btn-ghost btn-sm" id="btn-practice-copy-share">Copy text</button>
+                </div>
+              </div>
               <div class="results-actions">
                 <button id="btn-practice-again" class="btn btn-primary" type="button">Again</button>
                 <button id="btn-practice-home" class="btn btn-secondary" type="button">Home</button>
@@ -615,6 +652,13 @@
                   <canvas id="race-chart" class="race-chart" width="400" height="200" aria-label="Your race graph"></canvas>
                 </div>
                 <p class="chart-legend-hint">Pink = WPM · Cyan = progress % over time</p>
+                <div class="share-card" id="share-card">
+                  <p class="share-card-text" id="share-card-text">I raced on KeyClash — beat me!</p>
+                  <div class="share-card-actions">
+                    <button type="button" class="btn btn-secondary btn-sm" id="btn-share-result">Share result</button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-result">Copy text</button>
+                  </div>
+                </div>
               </section>
 
               <h3 class="standings-heading">Standings</h3>

@@ -2697,6 +2697,86 @@ body.settings-open {
   margin-top: 8px;
 }
 
+/* Live status + daily + share */
+.live-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(0, 245, 212, 0.2);
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 10px rgba(6, 214, 160, 0.7);
+  animation: livePulse 1.6s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.btn-daily {
+  background: linear-gradient(135deg, #ffd60a 0%, #f72585 55%, #7b2cbf 120%);
+  color: #12081a;
+  font-weight: 700;
+  box-shadow: 0 8px 28px rgba(255, 214, 10, 0.22);
+}
+
+.btn-daily:hover:not(:disabled) {
+  filter: brightness(1.05);
+  box-shadow: 0 10px 34px rgba(255, 214, 10, 0.32);
+}
+
+.daily-board-card {
+  width: min(440px, 100%);
+  padding: 16px 18px;
+  border-radius: 18px;
+}
+
+.daily-board-card .panel-head {
+  margin-bottom: 4px;
+}
+
+.share-card {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(0, 245, 212, 0.06);
+  border: 1px solid rgba(0, 245, 212, 0.22);
+  text-align: left;
+}
+
+.share-card-text {
+  margin: 0 0 10px;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.share-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Cap WPM display styling already via logic */
+
 /* —— How to play —— */
 .how-to {
   margin: 0 0 18px;

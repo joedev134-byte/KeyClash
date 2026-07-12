@@ -117,6 +117,20 @@
     btnMatchShare: document.getElementById("btn-match-share"),
     btnFindNew: document.getElementById("btn-find-new"),
     rematchHint: document.getElementById("rematch-hint"),
+    btnDaily: document.getElementById("btn-daily"),
+    liveStatusText: document.getElementById("live-status-text"),
+    dailyBoardList: document.getElementById("daily-board-list"),
+    dailyBoardMeta: document.getElementById("daily-board-meta"),
+    btnRefreshDaily: document.getElementById("btn-refresh-daily"),
+    shareCard: document.getElementById("share-card"),
+    shareCardText: document.getElementById("share-card-text"),
+    btnShareResult: document.getElementById("btn-share-result"),
+    btnCopyResult: document.getElementById("btn-copy-result"),
+    practiceShareCard: document.getElementById("practice-share-card"),
+    practiceShareText: document.getElementById("practice-share-text"),
+    btnPracticeShare: document.getElementById("btn-practice-share"),
+    btnPracticeCopyShare: document.getElementById("btn-practice-copy-share"),
+    practiceResultsTitle: document.getElementById("practice-results-title"),
     homeError: document.getElementById("home-error"),
     homeDifficulty: document.getElementById("home-difficulty"),
     homeLanguage: document.getElementById("home-language"),
@@ -299,6 +313,8 @@
     matchTimerId: null,
     matchFallbackShown: false,
     lastMatchWpm: 0,
+    dailyChallenge: false,
+    lastShareText: "",
   };
 
   if (!MODE_META[state.mode]) state.mode = "classic";
@@ -353,10 +369,14 @@
       updateReconnectBanner();
       renderRecentRooms();
       loadLeaderboard();
+      loadDailyBoard();
+      refreshLiveStatus();
       startLeaderboardHomePoll();
+      startLiveStatusPoll();
       document.body.classList.remove("keyboard-open");
     } else {
       stopLeaderboardHomePoll();
+      stopLiveStatusPoll();
     }
     // Keep ad on home only — never during lobby/race/practice
     try {
@@ -1803,16 +1823,34 @@
 
     if (els.btnCloseResults) els.btnCloseResults.hidden = false;
 
-    if (isHost()) {
+    if (room.quickMatch) {
+      els.resultsHint.textContent =
+        "1v1 done — Rematch (both must agree) or Find new opponent";
+      if (els.btnRematch) {
+        els.btnRematch.hidden = false;
+        els.btnRematch.textContent = "Rematch";
+        els.btnRematch.disabled = false;
+      }
+      if (els.btnFindNew) els.btnFindNew.hidden = false;
+    } else if (isHost()) {
       els.resultsHint.textContent =
         room.mode === "best_of_3" && !room.seriesComplete
           ? "Series continues — Next Round, or Close to return to lobby"
           : "Press Next Round to clash again, or Close for lobby";
       if (els.btnRematch) els.btnRematch.hidden = false;
+      if (els.btnFindNew) els.btnFindNew.hidden = true;
     } else {
       els.resultsHint.textContent =
         "Waiting for host to start the next round — or Close to view lobby";
       if (els.btnRematch) els.btnRematch.hidden = true;
+      if (els.btnFindNew) els.btnFindNew.hidden = true;
+    }
+
+    // Post-race share card
+    if (self && self.wpm >= 5) {
+      updateShareCard(self.wpm, self.accuracy, room.mode, room.language);
+    } else {
+      updateShareCard(null);
     }
 
     if (!state.confettiShown) {
@@ -2134,30 +2172,168 @@
     if (els.practiceTimer) els.practiceTimer.hidden = true;
   }
 
-  async function startPractice() {
+  function updateShareCard(wpm, accuracy, mode, language) {
+    const text =
+      wpm != null && wpm >= 5
+        ? `I hit ${wpm} WPM on KeyClash${
+            accuracy != null ? " (" + accuracy + "% acc)" : ""
+          } — beat me!\n${getGameUrl()}`
+        : `Race me on KeyClash — multiplayer typing!\n${getGameUrl()}`;
+    state.lastShareText = text;
+    if (els.shareCardText) els.shareCardText.textContent = text.replace(/\n/g, " · ");
+    if (els.practiceShareText) els.practiceShareText.textContent = text.replace(/\n/g, " · ");
+    if (els.shareCard) els.shareCard.hidden = !(wpm != null && wpm >= 5);
+    if (els.practiceShareCard) els.practiceShareCard.hidden = !(wpm != null && wpm >= 5);
+  }
+
+  async function shareResultText() {
+    const text = state.lastShareText || `Race me on KeyClash!\n${getGameUrl()}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "KeyClash",
+          text: text,
+          url: getGameUrl(),
+        });
+        toast("Shared!");
+        return;
+      } catch (e) {
+        if (e && e.name === "AbortError") return;
+      }
+    }
+    await copyText(text, "Result copied — paste to share");
+  }
+
+  async function loadDailyBoard() {
+    if (!els.dailyBoardList) return;
+    try {
+      const res = await fetch(
+        "/api/daily/board?language=" +
+          encodeURIComponent(state.language) +
+          "&limit=10",
+        { cache: "no-store" }
+      );
+      if (!res.ok) throw new Error("bad");
+      const data = await res.json();
+      if (els.dailyBoardMeta) {
+        els.dailyBoardMeta.textContent =
+          (data.day || "Today") +
+          " · " +
+          langLabel(data.language || state.language) +
+          " · best WPM";
+      }
+      const entries = data.entries || [];
+      if (!entries.length) {
+        els.dailyBoardList.innerHTML =
+          '<li class="lb-empty">No daily scores yet — be the first.</li>';
+        return;
+      }
+      els.dailyBoardList.innerHTML = entries
+        .map(
+          (e, i) =>
+            `<li><span class="lb-rank">#${i + 1}</span> <strong>${escapeHtml(
+              e.name
+            )}</strong> <span class="lb-meta">${e.wpm} WPM · ${e.accuracy}%</span></li>`
+        )
+        .join("");
+    } catch {
+      /* ignore */
+    }
+  }
+
+  let liveStatusPoll = null;
+  function stopLiveStatusPoll() {
+    if (liveStatusPoll) {
+      clearInterval(liveStatusPoll);
+      liveStatusPoll = null;
+    }
+  }
+  function startLiveStatusPoll() {
+    stopLiveStatusPoll();
+    liveStatusPoll = setInterval(refreshLiveStatus, 12000);
+  }
+  async function refreshLiveStatus() {
+    if (!els.liveStatusText) return;
+    try {
+      const res = await fetch("/api/health?_=" + Date.now(), { cache: "no-store" });
+      if (!res.ok) throw new Error("bad");
+      const data = await res.json();
+      const online = data.online != null ? data.online : 0;
+      const queue = data.queue != null ? data.queue : 0;
+      const rooms = data.rooms != null ? data.rooms : 0;
+      els.liveStatusText.textContent =
+        online +
+        " online · " +
+        queue +
+        " in 1v1 queue · " +
+        rooms +
+        " room" +
+        (rooms === 1 ? "" : "s");
+    } catch {
+      els.liveStatusText.textContent = "Server status unavailable";
+    }
+  }
+
+  function blockPaste(inputEl) {
+    if (!inputEl) return;
+    inputEl.addEventListener("paste", (e) => {
+      e.preventDefault();
+      toast("Paste blocked — type it out!", true);
+    });
+    inputEl.addEventListener("drop", (e) => {
+      e.preventDefault();
+      toast("Drop blocked — type it out!", true);
+    });
+  }
+
+  async function startPractice(opts) {
+    const options = opts || {};
+    state.dailyChallenge = !!options.daily;
     showScreen("practice");
     els.practiceResults.hidden = true;
     els.practiceInput.disabled = true;
     els.practiceInput.value = "";
-    els.practiceDiffLabel.textContent = capitalize(state.difficulty);
+    els.practiceDiffLabel.textContent = state.dailyChallenge
+      ? "Daily"
+      : capitalize(state.difficulty);
     if (els.practiceLangLabel) els.practiceLangLabel.textContent = langLabel(state.language);
-    if (els.practiceModeLabel) els.practiceModeLabel.textContent = modeLabel(state.mode);
+    if (els.practiceModeLabel) {
+      els.practiceModeLabel.textContent = state.dailyChallenge
+        ? "Daily"
+        : modeLabel(state.mode);
+    }
     if (els.practiceParaLabel) els.practiceParaLabel.textContent = String(state.paragraphs);
     els.practiceStatus.textContent = "Loading";
     els.practiceStatus.className = "status-pill countdown";
     stopPracticeTimer();
 
     try {
-      const qs = new URLSearchParams({
-        difficulty: state.difficulty,
-        language: state.language,
-        mode: state.mode,
-        paragraphs: String(state.paragraphs),
-        category: state.category || "all",
-      });
-      const res = await fetch("/api/practice?" + qs.toString());
-      if (!res.ok) throw new Error("bad status");
-      const data = await res.json();
+      let data;
+      if (state.dailyChallenge) {
+        const res = await fetch(
+          "/api/daily?language=" + encodeURIComponent(state.language),
+          { cache: "no-store" }
+        );
+        if (!res.ok) throw new Error("bad status");
+        data = await res.json();
+        data.durationMs = null;
+        if (els.practiceInputHint) {
+          els.practiceInputHint.textContent =
+            "Daily challenge · same passage for everyone today · " +
+            (data.day || "");
+        }
+      } else {
+        const qs = new URLSearchParams({
+          difficulty: state.difficulty,
+          language: state.language,
+          mode: state.mode,
+          paragraphs: String(state.paragraphs),
+          category: state.category || "all",
+        });
+        const res = await fetch("/api/practice?" + qs.toString());
+        if (!res.ok) throw new Error("bad status");
+        data = await res.json();
+      }
       const passage = normalizeTypingText(data.passage);
       state.practice = {
         passage,
@@ -2166,14 +2342,14 @@
         typedWrong: false,
         racing: false,
         start: null,
-        durationMs: data.durationMs || (state.mode === "timed" ? 60000 : null),
+        durationMs: data.durationMs || (!state.dailyChallenge && state.mode === "timed" ? 60000 : null),
         timerId: null,
       };
       renderPassageInto(els.practicePassage, passage, 0, false);
       practiceStats();
 
       // Show ghost panel during countdown so player sees it early
-      if (state.mode === "ghost") {
+      if (!state.dailyChallenge && state.mode === "ghost") {
         state.ghostWpm = loadGhostWpm();
         state.ghostCaret = 0;
         state.ghostProgress = 0;
@@ -2302,20 +2478,57 @@
       els.practiceScore.hidden = true;
     }
 
-    if (stats.wpm >= 5) saveGhostWpm(stats.wpm);
-    submitScore({
-      wpm: stats.wpm,
-      accuracy: stats.acc,
-      mode: state.mode,
-      language: state.language,
-      difficulty: state.difficulty,
-      source: "practice",
-    });
+    if (stats.wpm >= 5) {
+      saveGhostWpm(stats.wpm);
+      state.lastMatchWpm = stats.wpm;
+    }
+    updateShareCard(stats.wpm, stats.acc, state.dailyChallenge ? "daily" : state.mode, state.language);
+    if (els.practiceResultsTitle) {
+      els.practiceResultsTitle.textContent = state.dailyChallenge
+        ? "Daily Challenge Result"
+        : "Your Practice Result";
+    }
+
+    if (state.dailyChallenge) {
+      if (stats.wpm >= 5) {
+        fetch("/api/daily", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: getName(),
+            wpm: Math.min(220, stats.wpm),
+            accuracy: stats.acc,
+            language: state.language,
+          }),
+        })
+          .then((r) => r.json())
+          .then((res) => {
+            if (res && res.ok) {
+              toast(
+                res.improved
+                  ? "Daily score posted · " + stats.wpm + " WPM"
+                  : "Daily board unchanged (best kept)"
+              );
+              loadDailyBoard();
+            }
+          })
+          .catch(() => {});
+      }
+    } else {
+      submitScore({
+        wpm: Math.min(220, stats.wpm),
+        accuracy: stats.acc,
+        mode: state.mode,
+        language: state.language,
+        difficulty: state.difficulty,
+        source: "practice",
+      });
+    }
     if (info && info.eliminated) {
       KeyClashFX.screenFlash("rgba(255,77,109,0.15)");
-    } else if (state.mode === "ghost" && stats.wpm > (state.ghostWpm || 0)) {
+    } else if (!state.dailyChallenge && state.mode === "ghost" && stats.wpm > (state.ghostWpm || 0)) {
       KeyClashFX.victoryFX(1);
-    } else if (state.mode !== "ghost") {
+    } else if (state.dailyChallenge || state.mode !== "ghost") {
       KeyClashFX.victoryFX(1);
     } else {
       KeyClashFX.screenFlash("rgba(139,147,184,0.15)");
@@ -2592,7 +2805,55 @@
   els.btnPractice.addEventListener("click", () => {
     showHomeError("");
     cancelMatchmaking(true);
-    startPractice();
+    state.dailyChallenge = false;
+    startPractice({ daily: false });
+  });
+
+  if (els.btnDaily) {
+    els.btnDaily.addEventListener("click", () => {
+      showHomeError("");
+      cancelMatchmaking(true);
+      startPractice({ daily: true });
+    });
+  }
+  if (els.btnRefreshDaily) {
+    els.btnRefreshDaily.addEventListener("click", () => {
+      loadDailyBoard();
+      toast("Daily board refreshed");
+    });
+  }
+  if (els.btnShareResult) {
+    els.btnShareResult.addEventListener("click", () => shareResultText());
+  }
+  if (els.btnCopyResult) {
+    els.btnCopyResult.addEventListener("click", async () => {
+      await copyText(
+        state.lastShareText || `Race me on KeyClash!\n${getGameUrl()}`,
+        "Result copied"
+      );
+    });
+  }
+  if (els.btnPracticeShare) {
+    els.btnPracticeShare.addEventListener("click", () => shareResultText());
+  }
+  if (els.btnPracticeCopyShare) {
+    els.btnPracticeCopyShare.addEventListener("click", async () => {
+      await copyText(
+        state.lastShareText || `Race me on KeyClash!\n${getGameUrl()}`,
+        "Result copied"
+      );
+    });
+  }
+
+  // Fairness: block paste/drop into typing fields
+  blockPaste(els.typeInput);
+  blockPaste(els.practiceInput);
+
+  socket.on("player:forfeit", ({ name, reason }) => {
+    toast(
+      (name || "Opponent") +
+        (reason === "disconnect" ? " disconnected — forfeit" : " forfeited")
+    );
   });
 
   if (els.btnMatch) {
@@ -2668,7 +2929,9 @@
   }
   els.btnPracticeExit.addEventListener("click", exitPractice);
   els.btnPracticeHome.addEventListener("click", exitPractice);
-  els.btnPracticeAgain.addEventListener("click", () => startPractice());
+  els.btnPracticeAgain.addEventListener("click", () =>
+    startPractice({ daily: state.dailyChallenge })
+  );
 
   els.code.addEventListener("keydown", (e) => {
     if (e.key === "Enter") els.btnJoin.click();
@@ -3373,6 +3636,9 @@
     if (document.visibilityState === "hidden") return;
     fetch("/api/health", { cache: "no-store" }).catch(() => {});
   }, CLIENT_KEEPALIVE_MS);
+
+  refreshLiveStatus();
+  loadDailyBoard();
 
   // Prefill room from share link even before socket connects
   const urlRoom = getRoomFromUrl();

@@ -44,8 +44,9 @@ function submitScore(payload) {
   let accuracy = Math.round(Number(payload.accuracy));
   if (!Number.isFinite(accuracy) || accuracy < 0) accuracy = 100;
   if (accuracy === 0 && wpm > 0) accuracy = 1;
-  if (wpm < 5 || wpm > 400) {
-    return { ok: false, error: "WPM out of range" };
+  // Human-plausible ceiling (elite ~200; soft cap for fairness)
+  if (wpm < 5 || wpm > 220) {
+    return { ok: false, error: "WPM out of range (5–220)" };
   }
   if (accuracy < 1 || accuracy > 100) {
     return { ok: false, error: "Accuracy out of range" };

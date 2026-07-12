@@ -4,3 +4,4 @@ node_modules/
 .env
 data/leaderboard.json
 data/analytics.json
+data/daily.json

@@ -26,7 +26,9 @@ Open **http://localhost:3000**
   - Empty-queue fallback (Practice / Create Room / Share invite)
   - **Rematch** same opponent or **Find new**
 - **Leaderboard** — server + this-device personal best
+- **Daily Challenge** — same passage per day + global board (`GET /api/daily`)
 - **Stats** — `GET /api/stats` (aggregate 1v1 counts / languages, no personal data)
+- **Fairness** — paste block, 1v1 disconnect forfeit, WPM caps
 - **Deploy-ready** — see [DEPLOY.md](./DEPLOY.md)
 
 ## Deploy (shareable link)
