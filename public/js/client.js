@@ -503,7 +503,12 @@
 
   function focusTypeDock(inputEl) {
     if (!inputEl) return;
-    // After soft keyboard opens, keep the input visible
+    // During race, type dock is fixed — don't scroll the page (keeps passage stable)
+    if (document.body.classList.contains("is-racing")) {
+      setTimeout(syncVisualViewport, 200);
+      return;
+    }
+    // After soft keyboard opens, keep the input visible (lobby / practice)
     requestAnimationFrame(() => {
       try {
         inputEl.scrollIntoView({ block: "end", inline: "nearest", behavior: "smooth" });
@@ -1530,6 +1535,43 @@
     if (wpm) wpm.textContent = String(update.wpm || 0);
   }
 
+  /**
+   * Keep the current character visible inside the passage box only
+   * (does not scroll the whole page — better for mobile race).
+   * Caret stays in the upper ~35% of the passage viewport so upcoming text is readable.
+   */
+  function scrollCaretIntoPassage(passageEl, caretIndex) {
+    if (!passageEl) return;
+    // Start of race / empty: pin to top so first characters are visible
+    if (!caretIndex || caretIndex <= 0) {
+      passageEl.scrollTop = 0;
+      return;
+    }
+    const cur = passageEl.querySelector(".char.current");
+    if (!cur) return;
+    try {
+      const pRect = passageEl.getBoundingClientRect();
+      const cRect = cur.getBoundingClientRect();
+      // Position of caret relative to full scrollable content
+      const caretY = cRect.top - pRect.top + passageEl.scrollTop;
+      const viewH = passageEl.clientHeight || 1;
+      // Keep caret ~35% from top of the passage viewport
+      const ideal = caretY - viewH * 0.35;
+      const maxScroll = Math.max(0, passageEl.scrollHeight - viewH);
+      const next = Math.max(0, Math.min(maxScroll, ideal));
+      // Only adjust if caret is near edges (reduces jitter)
+      const caretInView = cRect.top >= pRect.top + viewH * 0.15 && cRect.bottom <= pRect.bottom - viewH * 0.2;
+      if (!caretInView || Math.abs(passageEl.scrollTop - next) > 4) {
+        passageEl.scrollTop = next;
+      }
+    } catch (_) {
+      try {
+        const cur2 = passageEl.querySelector(".char.current");
+        if (cur2) cur2.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" });
+      } catch (__) {}
+    }
+  }
+
   function renderPassageInto(el, text, caret, typedWrong) {
     if (!text) {
       el.innerHTML = '<span class="char upcoming">Passage appears when the race begins…</span>';
@@ -1557,17 +1599,8 @@
       html += `<span class="${cls}">${ch}</span>`;
     }
     el.innerHTML = html;
-    const cur = el.querySelector(".char.current");
-    if (cur) {
-      // Keep caret visible; auto is smoother on mobile while typing
-      try {
-        cur.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" });
-      } catch (_) {
-        try {
-          cur.scrollIntoView(false);
-        } catch (__) {}
-      }
-    }
+    // After DOM paint, auto-scroll passage so current letter stays in view
+    requestAnimationFrame(() => scrollCaretIntoPassage(el, caret));
   }
 
   function renderPassage() {
@@ -2014,19 +2047,38 @@
     setStatus("racing");
     renderPassage();
     resetStatsDisplay();
-    // Focus typing surface after layout paints
+    // Focus typing surface; pin passage to first character (no manual scroll needed)
     requestAnimationFrame(() => {
       try {
         window.scrollTo(0, 0);
-        if (els.passage) els.passage.scrollTop = 0;
-        els.typeInput.focus();
-        focusTypeDock(els.typeInput);
+        if (els.passage) {
+          els.passage.scrollTop = 0;
+          scrollCaretIntoPassage(els.passage, 0);
+        }
+        // Scroll arena into view without burying the passage under chrome
+        if (els.passage && els.passage.closest) {
+          const arena = els.passage.closest(".arena");
+          if (arena) arena.scrollTop = 0;
+        }
+        const layout = document.querySelector("#screen-game .game-layout");
+        if (layout) layout.scrollTop = 0;
+        els.typeInput.focus({ preventScroll: true });
       } catch (_) {
         try {
           els.typeInput.focus();
         } catch (__) {}
       }
     });
+    // Second pass after keyboard / layout settle (mobile)
+    setTimeout(() => {
+      try {
+        if (els.passage) {
+          if (state.caret <= 0) els.passage.scrollTop = 0;
+          else scrollCaretIntoPassage(els.passage, state.caret);
+        }
+        els.typeInput.focus({ preventScroll: true });
+      } catch (_) {}
+    }, 280);
     if (m === "timed") startUiTimer(state.raceStart, state.raceDurationMs);
     else stopUiTimer();
     if (m === "ghost") startGhostRace();
