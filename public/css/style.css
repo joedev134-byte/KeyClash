@@ -469,6 +469,28 @@ input[type="text"]:focus {
   opacity: 0.8;
 }
 
+.home-foot p {
+  margin: 0;
+}
+
+.home-foot-links {
+  margin-top: 8px !important;
+  font-size: 0.8rem;
+}
+
+.home-foot-links a {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  opacity: 0.9;
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.home-foot-links a:hover {
+  color: var(--cyan);
+  opacity: 1;
+}
+
 /* Buttons */
 .btn {
   position: relative;
